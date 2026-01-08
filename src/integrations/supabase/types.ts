@@ -17,9 +17,11 @@ export type Database = {
       availability_slots: {
         Row: {
           booked_tables: number
+          booking_mode: string
           created_at: string
           date: string
           description: string | null
+          end_time: string | null
           id: string
           name: string
           time: string
@@ -27,9 +29,11 @@ export type Database = {
         }
         Insert: {
           booked_tables?: number
+          booking_mode?: string
           created_at?: string
           date: string
           description?: string | null
+          end_time?: string | null
           id?: string
           name?: string
           time: string
@@ -37,9 +41,11 @@ export type Database = {
         }
         Update: {
           booked_tables?: number
+          booking_mode?: string
           created_at?: string
           date?: string
           description?: string | null
+          end_time?: string | null
           id?: string
           name?: string
           time?: string

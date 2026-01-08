@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { format } from 'date-fns';
-import { CalendarIcon, Clock, Loader2, Plus, TableIcon, Tag, FileText } from 'lucide-react';
+import { CalendarIcon, Clock, Loader2, Plus, TableIcon, Tag, FileText, Ticket, Shuffle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
   Popover,
   PopoverContent,
@@ -21,6 +22,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useCreateAvailabilitySlots } from '@/hooks/useAvailabilitySlots';
 import { toast } from '@/hooks/use-toast';
+import { BookingMode } from '@/lib/types';
 
 const TIME_OPTIONS = [
   '06:00', '06:30', '07:00', '07:30', '08:00', '08:30', '09:00', '09:30',
@@ -33,10 +35,11 @@ const TIME_OPTIONS = [
 export function AvailabilityManager() {
   const [date, setDate] = useState<Date | undefined>(undefined);
   const [startTime, setStartTime] = useState('17:00');
-  const [endTime, setEndTime] = useState('22:00');
-  const [tablesPerSlot, setTablesPerSlot] = useState(5);
+  const [endTime, setEndTime] = useState('19:00');
+  const [totalTables, setTotalTables] = useState(5);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [bookingMode, setBookingMode] = useState<BookingMode>('fcfs');
   
   const createSlots = useCreateAvailabilitySlots();
 
@@ -46,27 +49,6 @@ export function AvailabilityManager() {
     const ampm = hour >= 12 ? 'PM' : 'AM';
     const displayHour = hour % 12 || 12;
     return `${displayHour}:${minutes} ${ampm}`;
-  };
-
-  const generateSlots = () => {
-    if (!date) return [];
-
-    const slots: { date: string; time: string; total_tables: number; name: string; description: string | null }[] = [];
-    const startIndex = TIME_OPTIONS.indexOf(startTime);
-    const endIndex = TIME_OPTIONS.indexOf(endTime);
-    const slotName = name.trim() || 'Available Table';
-
-    for (let i = startIndex; i <= endIndex; i++) {
-      slots.push({
-        date: format(date, 'yyyy-MM-dd'),
-        time: TIME_OPTIONS[i],
-        total_tables: tablesPerSlot,
-        name: slotName,
-        description: description.trim() || null,
-      });
-    }
-
-    return slots;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -80,21 +62,33 @@ export function AvailabilityManager() {
       return;
     }
 
-    const slots = generateSlots();
-    if (slots.length === 0) {
+    const startIndex = TIME_OPTIONS.indexOf(startTime);
+    const endIndex = TIME_OPTIONS.indexOf(endTime);
+    
+    if (startIndex >= endIndex) {
       toast({
         title: 'Error',
-        description: 'Please select a valid time range',
+        description: 'End time must be after start time',
         variant: 'destructive',
       });
       return;
     }
 
+    const slot = {
+      date: format(date, 'yyyy-MM-dd'),
+      time: startTime,
+      end_time: endTime,
+      total_tables: totalTables,
+      name: name.trim() || 'Available Table',
+      description: description.trim() || null,
+      booking_mode: bookingMode,
+    };
+
     try {
-      await createSlots.mutateAsync(slots);
+      await createSlots.mutateAsync([slot]);
       toast({
-        title: 'Availability Added',
-        description: `Created ${slots.length} time slots for ${format(date, 'MMMM d, yyyy')}`,
+        title: 'Availability Created',
+        description: `"${slot.name}" on ${format(date, 'MMMM d, yyyy')} from ${formatTimeDisplay(startTime)} to ${formatTimeDisplay(endTime)}`,
       });
       setDate(undefined);
       setName('');
@@ -102,17 +96,15 @@ export function AvailabilityManager() {
     } catch (error) {
       toast({
         title: 'Error',
-        description: 'Failed to create availability slots',
+        description: 'Failed to create availability slot',
         variant: 'destructive',
       });
     }
   };
 
-  const previewSlots = date ? generateSlots() : [];
-
   return (
     <div className="admin-card">
-      <h2 className="mb-6 text-xl font-semibold">Manage Availability</h2>
+      <h2 className="mb-6 text-xl font-semibold">Create Availability</h2>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Name and Description */}
@@ -120,10 +112,10 @@ export function AvailabilityManager() {
           <div className="space-y-2">
             <Label className="flex items-center gap-1.5">
               <Tag className="h-4 w-4" />
-              Availability Name
+              Event Name
             </Label>
             <Input
-              placeholder="e.g., Chef's Table, Patio Seating"
+              placeholder="e.g., Dinner Service, Wine Tasting"
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
@@ -175,18 +167,18 @@ export function AvailabilityManager() {
             </Popover>
           </div>
 
-          {/* Tables Per Slot */}
+          {/* Total Tables */}
           <div className="space-y-2">
             <Label className="flex items-center gap-1.5">
               <TableIcon className="h-4 w-4" />
-              Tables Per Slot
+              Total Tables
             </Label>
             <Input
               type="number"
               min={1}
               max={50}
-              value={tablesPerSlot}
-              onChange={(e) => setTablesPerSlot(Number(e.target.value))}
+              value={totalTables}
+              onChange={(e) => setTotalTables(Number(e.target.value))}
             />
           </div>
 
@@ -231,27 +223,63 @@ export function AvailabilityManager() {
           </div>
         </div>
 
-        {/* Preview */}
-        {previewSlots.length > 0 && (
-          <div className="rounded-lg bg-muted p-4">
-            <p className="mb-2 text-sm font-medium text-muted-foreground">
-              Preview: {previewSlots.length} slots will be created
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {previewSlots.slice(0, 10).map((slot, i) => (
-                <span
-                  key={i}
-                  className="rounded-md bg-background px-2 py-1 text-xs font-medium"
-                >
-                  {formatTimeDisplay(slot.time)}
-                </span>
-              ))}
-              {previewSlots.length > 10 && (
-                <span className="px-2 py-1 text-xs text-muted-foreground">
-                  +{previewSlots.length - 10} more
-                </span>
+        {/* Booking Mode */}
+        <div className="space-y-3">
+          <Label>Booking Mode</Label>
+          <RadioGroup
+            value={bookingMode}
+            onValueChange={(v) => setBookingMode(v as BookingMode)}
+            className="grid gap-3 sm:grid-cols-2"
+          >
+            <Label
+              htmlFor="fcfs"
+              className={cn(
+                "flex cursor-pointer items-start gap-3 rounded-lg border p-4 transition-colors hover:bg-muted/50",
+                bookingMode === 'fcfs' && "border-accent bg-accent/5"
               )}
-            </div>
+            >
+              <RadioGroupItem value="fcfs" id="fcfs" className="mt-0.5" />
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 font-medium">
+                  <Ticket className="h-4 w-4" />
+                  First Come, First Served
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Instant booking confirmation when customers book.
+                </p>
+              </div>
+            </Label>
+            <Label
+              htmlFor="lottery"
+              className={cn(
+                "flex cursor-pointer items-start gap-3 rounded-lg border p-4 transition-colors hover:bg-muted/50",
+                bookingMode === 'lottery' && "border-accent bg-accent/5"
+              )}
+            >
+              <RadioGroupItem value="lottery" id="lottery" className="mt-0.5" />
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 font-medium">
+                  <Shuffle className="h-4 w-4" />
+                  Lottery
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Users apply for a spot; you pick winners later.
+                </p>
+              </div>
+            </Label>
+          </RadioGroup>
+        </div>
+
+        {/* Preview */}
+        {date && (
+          <div className="rounded-lg bg-muted p-4">
+            <p className="text-sm font-medium text-muted-foreground">Preview</p>
+            <p className="mt-1 font-medium">
+              {name.trim() || 'Available Table'}
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {format(date, 'MMMM d, yyyy')} • {formatTimeDisplay(startTime)} – {formatTimeDisplay(endTime)} • {totalTables} tables • {bookingMode === 'fcfs' ? 'First Come, First Served' : 'Lottery'}
+            </p>
           </div>
         )}
 
@@ -268,7 +296,7 @@ export function AvailabilityManager() {
           ) : (
             <>
               <Plus className="mr-2 h-4 w-4" />
-              Open Availability
+              Create Availability
             </>
           )}
         </Button>

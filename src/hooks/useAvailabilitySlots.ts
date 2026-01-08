@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { AvailabilitySlot, MealTime, MEAL_TIME_RANGES } from '@/lib/types';
+import { AvailabilitySlot, MealTime, MEAL_TIME_RANGES, BookingMode } from '@/lib/types';
 import { format } from 'date-fns';
 
 export function useAvailabilitySlots(date: Date | undefined, mealTime: MealTime) {
@@ -30,11 +30,21 @@ export function useAvailabilitySlots(date: Date | undefined, mealTime: MealTime)
   });
 }
 
+interface CreateSlotInput {
+  date: string;
+  time: string;
+  end_time: string | null;
+  total_tables: number;
+  name: string;
+  description: string | null;
+  booking_mode: BookingMode;
+}
+
 export function useCreateAvailabilitySlots() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (slots: Omit<AvailabilitySlot, 'id' | 'created_at' | 'booked_tables'>[]) => {
+    mutationFn: async (slots: CreateSlotInput[]) => {
       const { data, error } = await supabase
         .from('availability_slots')
         .insert(
@@ -47,6 +57,7 @@ export function useCreateAvailabilitySlots() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['availability-slots'] });
+      queryClient.invalidateQueries({ queryKey: ['month-availability'] });
     },
   });
 }
@@ -60,11 +71,13 @@ export function useBookSlot() {
       customerName,
       customerEmail,
       partySize,
+      isLottery = false,
     }: {
       slotId: string;
       customerName: string;
       customerEmail: string;
       partySize: number;
+      isLottery?: boolean;
     }) => {
       // First, get the current slot
       const { data: slot, error: slotError } = await supabase
@@ -75,9 +88,14 @@ export function useBookSlot() {
 
       if (slotError) throw slotError;
       if (!slot) throw new Error('Slot not found');
-      if (slot.booked_tables >= slot.total_tables) throw new Error('No tables available');
+      
+      // For FCFS, check availability. For lottery, no limit check needed.
+      if (!isLottery && slot.booked_tables >= slot.total_tables) {
+        throw new Error('No tables available');
+      }
 
-      // Create booking
+      // Create booking with appropriate status
+      const status = isLottery ? 'pending_lottery' : 'confirmed';
       const { error: bookingError } = await supabase
         .from('bookings')
         .insert({
@@ -85,22 +103,26 @@ export function useBookSlot() {
           customer_name: customerName,
           customer_email: customerEmail,
           party_size: partySize,
+          status,
         });
 
       if (bookingError) throw bookingError;
 
-      // Update slot booked_tables
-      const { error: updateError } = await supabase
-        .from('availability_slots')
-        .update({ booked_tables: slot.booked_tables + 1 })
-        .eq('id', slotId);
+      // Only update booked_tables for FCFS bookings
+      if (!isLottery) {
+        const { error: updateError } = await supabase
+          .from('availability_slots')
+          .update({ booked_tables: slot.booked_tables + 1 })
+          .eq('id', slotId);
 
-      if (updateError) throw updateError;
+        if (updateError) throw updateError;
+      }
 
-      return { success: true };
+      return { success: true, isLottery };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['availability-slots'] });
+      queryClient.invalidateQueries({ queryKey: ['month-availability'] });
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
     },
   });
