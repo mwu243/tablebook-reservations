@@ -1,0 +1,123 @@
+import { format } from 'date-fns';
+import { Clock, Loader2, Users } from 'lucide-react';
+import { AvailabilitySlot, MealTime, MEAL_TIME_RANGES } from '@/lib/types';
+import { SlotChip } from './SlotChip';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+
+interface SlotsPanelProps {
+  date: Date;
+  slots: AvailabilitySlot[] | undefined;
+  isLoading: boolean;
+  partySize: number;
+  onPartySizeChange: (size: number) => void;
+  mealTime: MealTime;
+  onMealTimeChange: (time: MealTime) => void;
+  onSlotClick: (slot: AvailabilitySlot) => void;
+}
+
+export function SlotsPanel({
+  date,
+  slots,
+  isLoading,
+  partySize,
+  onPartySizeChange,
+  mealTime,
+  onMealTimeChange,
+  onSlotClick,
+}: SlotsPanelProps) {
+  const availableSlots = slots?.filter(s => s.booked_tables < s.total_tables) || [];
+
+  return (
+    <div className="rounded-xl border bg-card p-6 shadow-sm">
+      <div className="mb-6">
+        <h2 className="text-xl font-semibold">
+          {format(date, 'EEEE, MMMM d')}
+        </h2>
+        <p className="mt-1 text-muted-foreground">
+          Select your preferred time
+        </p>
+      </div>
+
+      {/* Filters */}
+      <div className="mb-6 flex gap-4">
+        <div className="flex-1">
+          <label className="mb-2 block text-sm font-medium text-muted-foreground">
+            <Users className="mr-1.5 inline h-4 w-4" />
+            Party Size
+          </label>
+          <Select
+            value={partySize.toString()}
+            onValueChange={(v) => onPartySizeChange(Number(v))}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                <SelectItem key={n} value={n.toString()}>
+                  {n} {n === 1 ? 'Guest' : 'Guests'}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex-1">
+          <label className="mb-2 block text-sm font-medium text-muted-foreground">
+            <Clock className="mr-1.5 inline h-4 w-4" />
+            Time
+          </label>
+          <Select value={mealTime} onValueChange={(v) => onMealTimeChange(v as MealTime)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Times</SelectItem>
+              <SelectItem value="breakfast">Breakfast</SelectItem>
+              <SelectItem value="lunch">Lunch</SelectItem>
+              <SelectItem value="dinner">Dinner</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {/* Slots */}
+      {isLoading ? (
+        <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          <span>Loading times...</span>
+        </div>
+      ) : availableSlots.length === 0 ? (
+        <div className="py-8 text-center text-muted-foreground">
+          <p>No times available for this filter.</p>
+          <p className="mt-1 text-sm">Try selecting "All Times".</p>
+        </div>
+      ) : (
+        <>
+          <p className="mb-4 text-sm text-muted-foreground">
+            {availableSlots.length} time {availableSlots.length === 1 ? 'slot' : 'slots'} available
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {slots?.map((slot) => {
+              const isAvailable = slot.booked_tables < slot.total_tables;
+              return (
+                <SlotChip
+                  key={slot.id}
+                  slot={slot}
+                  isAvailable={isAvailable}
+                  onClick={() => onSlotClick(slot)}
+                />
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
