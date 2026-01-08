@@ -37,9 +37,8 @@ export function useCreateAvailabilitySlots() {
     mutationFn: async (slots: Omit<AvailabilitySlot, 'id' | 'created_at' | 'booked_tables'>[]) => {
       const { data, error } = await supabase
         .from('availability_slots')
-        .upsert(
-          slots.map(slot => ({ ...slot, booked_tables: 0 })),
-          { onConflict: 'date,time', ignoreDuplicates: false }
+        .insert(
+          slots.map(slot => ({ ...slot, booked_tables: 0 }))
         )
         .select();
 

@@ -19,7 +19,9 @@ export type Database = {
           booked_tables: number
           created_at: string
           date: string
+          description: string | null
           id: string
+          name: string
           time: string
           total_tables: number
         }
@@ -27,7 +29,9 @@ export type Database = {
           booked_tables?: number
           created_at?: string
           date: string
+          description?: string | null
           id?: string
+          name?: string
           time: string
           total_tables?: number
         }
@@ -35,7 +39,9 @@ export type Database = {
           booked_tables?: number
           created_at?: string
           date?: string
+          description?: string | null
           id?: string
+          name?: string
           time?: string
           total_tables?: number
         }
