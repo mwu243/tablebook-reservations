@@ -4,6 +4,8 @@ export interface AvailabilitySlot {
   time: string;
   total_tables: number;
   booked_tables: number;
+  name: string;
+  description: string | null;
   created_at: string;
 }
 

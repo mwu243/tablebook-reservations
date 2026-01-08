@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { format } from 'date-fns';
-import { CalendarIcon, Clock, Loader2, Plus, TableIcon } from 'lucide-react';
+import { CalendarIcon, Clock, Loader2, Plus, TableIcon, Tag, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Popover,
   PopoverContent,
@@ -34,6 +35,8 @@ export function AvailabilityManager() {
   const [startTime, setStartTime] = useState('17:00');
   const [endTime, setEndTime] = useState('22:00');
   const [tablesPerSlot, setTablesPerSlot] = useState(5);
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
   
   const createSlots = useCreateAvailabilitySlots();
 
@@ -48,15 +51,18 @@ export function AvailabilityManager() {
   const generateSlots = () => {
     if (!date) return [];
 
-    const slots: { date: string; time: string; total_tables: number }[] = [];
+    const slots: { date: string; time: string; total_tables: number; name: string; description: string | null }[] = [];
     const startIndex = TIME_OPTIONS.indexOf(startTime);
     const endIndex = TIME_OPTIONS.indexOf(endTime);
+    const slotName = name.trim() || 'Available Table';
 
     for (let i = startIndex; i <= endIndex; i++) {
       slots.push({
         date: format(date, 'yyyy-MM-dd'),
         time: TIME_OPTIONS[i],
         total_tables: tablesPerSlot,
+        name: slotName,
+        description: description.trim() || null,
       });
     }
 
@@ -91,6 +97,8 @@ export function AvailabilityManager() {
         description: `Created ${slots.length} time slots for ${format(date, 'MMMM d, yyyy')}`,
       });
       setDate(undefined);
+      setName('');
+      setDescription('');
     } catch (error) {
       toast({
         title: 'Error',
@@ -107,6 +115,34 @@ export function AvailabilityManager() {
       <h2 className="mb-6 text-xl font-semibold">Manage Availability</h2>
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Name and Description */}
+        <div className="grid gap-6 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label className="flex items-center gap-1.5">
+              <Tag className="h-4 w-4" />
+              Availability Name
+            </Label>
+            <Input
+              placeholder="e.g., Chef's Table, Patio Seating"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="flex items-center gap-1.5">
+              <FileText className="h-4 w-4" />
+              Description (Optional)
+            </Label>
+            <Textarea
+              placeholder="e.g., Premium outdoor seating with garden views"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={1}
+              className="min-h-[40px] resize-none"
+            />
+          </div>
+        </div>
+
         <div className="grid gap-6 sm:grid-cols-2">
           {/* Date Picker */}
           <div className="space-y-2">
