@@ -28,6 +28,7 @@ export function useLotteryBookings() {
       return data as Booking[];
     },
     refetchInterval: 5000,
+    staleTime: 0, // Always consider data stale for immediate refetch
   });
 }
 
@@ -91,6 +92,89 @@ export function useRejectLotteryEntry() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
+    },
+  });
+}
+
+export function usePickRandomWinner() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ 
+      slotId, 
+      entries, 
+      winnersCount = 1,
+      rejectOthers = true 
+    }: { 
+      slotId: string; 
+      entries: Booking[]; 
+      winnersCount?: number;
+      rejectOthers?: boolean;
+    }) => {
+      if (entries.length === 0) {
+        throw new Error('No entries to pick from');
+      }
+
+      // Get current slot info
+      const { data: slot, error: slotError } = await supabase
+        .from('availability_slots')
+        .select('booked_tables, total_tables')
+        .eq('id', slotId)
+        .single();
+
+      if (slotError) throw slotError;
+      if (!slot) throw new Error('Slot not found');
+
+      const availableSpots = slot.total_tables - slot.booked_tables;
+      const actualWinnersCount = Math.min(winnersCount, entries.length, availableSpots);
+
+      if (actualWinnersCount <= 0) {
+        throw new Error('No spots available for winners');
+      }
+
+      // Shuffle and pick winners
+      const shuffled = [...entries].sort(() => Math.random() - 0.5);
+      const winners = shuffled.slice(0, actualWinnersCount);
+      const losers = shuffled.slice(actualWinnersCount);
+
+      // Update winners to confirmed
+      const winnerIds = winners.map(w => w.id);
+      const { error: winnerError } = await supabase
+        .from('bookings')
+        .update({ status: 'confirmed' })
+        .in('id', winnerIds);
+
+      if (winnerError) throw winnerError;
+
+      // Optionally reject others
+      if (rejectOthers && losers.length > 0) {
+        const loserIds = losers.map(l => l.id);
+        const { error: loserError } = await supabase
+          .from('bookings')
+          .update({ status: 'cancelled' })
+          .in('id', loserIds);
+
+        if (loserError) throw loserError;
+      }
+
+      // Update booked_tables count
+      const { error: updateError } = await supabase
+        .from('availability_slots')
+        .update({ booked_tables: slot.booked_tables + actualWinnersCount })
+        .eq('id', slotId);
+
+      if (updateError) throw updateError;
+
+      return { 
+        winners, 
+        rejected: rejectOthers ? losers : [],
+        winnersCount: actualWinnersCount 
+      };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['availability-slots'] });
+      queryClient.invalidateQueries({ queryKey: ['month-availability'] });
     },
   });
 }
