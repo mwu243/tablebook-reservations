@@ -1,5 +1,6 @@
 import { ReservationsList } from './ReservationsList';
 import { AvailabilityManager } from './AvailabilityManager';
+import { LotteryManager } from './LotteryManager';
 
 export function AdminView() {
   return (
@@ -13,7 +14,10 @@ export function AdminView() {
         </div>
 
         <div className="grid gap-8 lg:grid-cols-2">
-          <ReservationsList />
+          <div className="space-y-8">
+            <ReservationsList />
+            <LotteryManager />
+          </div>
           <AvailabilityManager />
         </div>
       </div>
