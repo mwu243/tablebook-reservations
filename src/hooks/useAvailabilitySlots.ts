@@ -127,3 +127,45 @@ export function useBookSlot() {
     },
   });
 }
+
+export function useDeleteAvailabilitySlot() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (slotId: string) => {
+      // The cascade delete will automatically remove associated bookings
+      const { error } = await supabase
+        .from('availability_slots')
+        .delete()
+        .eq('id', slotId);
+
+      if (error) throw error;
+      return { success: true };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['availability-slots'] });
+      queryClient.invalidateQueries({ queryKey: ['month-availability'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+    },
+  });
+}
+
+export function useAllUpcomingSlots() {
+  return useQuery({
+    queryKey: ['upcoming-slots'],
+    queryFn: async () => {
+      const today = format(new Date(), 'yyyy-MM-dd');
+      
+      const { data, error } = await supabase
+        .from('availability_slots')
+        .select('*')
+        .gte('date', today)
+        .order('date', { ascending: true })
+        .order('time', { ascending: true });
+
+      if (error) throw error;
+      return data as AvailabilitySlot[];
+    },
+    refetchInterval: 5000,
+  });
+}
