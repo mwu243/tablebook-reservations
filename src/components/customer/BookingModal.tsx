@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { Check, Loader2, Shuffle, Ticket, PartyPopper } from 'lucide-react';
 import {
@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AvailabilitySlot } from '@/lib/types';
 import { useBookSlot } from '@/hooks/useAvailabilitySlots';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface BookingModalProps {
   slot: AvailabilitySlot | null;
@@ -28,6 +29,7 @@ interface BookingModalProps {
 }
 
 export function BookingModal({ slot, partySize, onClose }: BookingModalProps) {
+  const { user } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [successDialog, setSuccessDialog] = useState<{ open: boolean; isLottery: boolean }>({
@@ -35,6 +37,13 @@ export function BookingModal({ slot, partySize, onClose }: BookingModalProps) {
     isLottery: false,
   });
   const bookSlot = useBookSlot();
+
+  // Pre-fill email from authenticated user
+  useEffect(() => {
+    if (user?.email && !email) {
+      setEmail(user.email);
+    }
+  }, [user, email]);
 
   const formatTime = (time: string) => {
     const [hours, minutes] = time.split(':');
@@ -56,6 +65,7 @@ export function BookingModal({ slot, partySize, onClose }: BookingModalProps) {
         customerName: name.trim(),
         customerEmail: email.trim(),
         partySize,
+        userId: user?.id,
         isLottery,
       });
       

@@ -71,15 +71,17 @@ export function useBookSlot() {
       customerName,
       customerEmail,
       partySize,
+      userId,
       isLottery = false,
     }: {
       slotId: string;
       customerName: string;
       customerEmail: string;
       partySize: number;
+      userId?: string;
       isLottery?: boolean;
     }) => {
-      // Create booking with appropriate status
+      // Create booking with appropriate status and user_id
       const status = isLottery ? 'pending_lottery' : 'confirmed';
       const { error: bookingError } = await supabase
         .from('bookings')
@@ -88,6 +90,7 @@ export function useBookSlot() {
           customer_name: customerName,
           customer_email: customerEmail,
           party_size: partySize,
+          user_id: userId,
           status,
         });
 
@@ -108,6 +111,7 @@ export function useBookSlot() {
       queryClient.invalidateQueries({ queryKey: ['availability-slots'] });
       queryClient.invalidateQueries({ queryKey: ['month-availability'] });
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['user-bookings'] });
     },
   });
 }

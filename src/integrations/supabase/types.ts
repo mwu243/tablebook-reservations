@@ -142,6 +142,7 @@ export type Database = {
           slot_time: string
           slot_total_tables: number
           status: string
+          user_id: string
         }[]
       }
       has_role: {
