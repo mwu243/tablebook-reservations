@@ -2,7 +2,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ViewMode } from '@/lib/types';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
-import { UtensilsCrossed, Shield, LogIn, LogOut, User } from 'lucide-react';
+import { UtensilsCrossed, Shield, LogIn, LogOut, User, Settings } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   DropdownMenu,
@@ -91,6 +91,12 @@ export function Navbar({ viewMode, onViewModeChange }: NavbarProps) {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                {isAdmin && (
+                  <DropdownMenuItem onClick={() => navigate('/master-admin')}>
+                    <Settings className="mr-2 h-4 w-4" />
+                    Master Admin
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onClick={handleSignOut}>
                   <LogOut className="mr-2 h-4 w-4" />
                   Sign out
