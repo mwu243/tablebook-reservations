@@ -79,21 +79,6 @@ export function useBookSlot() {
       partySize: number;
       isLottery?: boolean;
     }) => {
-      // First, get the current slot
-      const { data: slot, error: slotError } = await supabase
-        .from('availability_slots')
-        .select('*')
-        .eq('id', slotId)
-        .single();
-
-      if (slotError) throw slotError;
-      if (!slot) throw new Error('Slot not found');
-      
-      // For FCFS, check availability. For lottery, no limit check needed.
-      if (!isLottery && slot.booked_tables >= slot.total_tables) {
-        throw new Error('No tables available');
-      }
-
       // Create booking with appropriate status
       const status = isLottery ? 'pending_lottery' : 'confirmed';
       const { error: bookingError } = await supabase
@@ -108,12 +93,11 @@ export function useBookSlot() {
 
       if (bookingError) throw bookingError;
 
-      // Only update booked_tables for FCFS bookings
+      // Only update booked_tables for FCFS bookings using the RPC function
       if (!isLottery) {
-        const { error: updateError } = await supabase
-          .from('availability_slots')
-          .update({ booked_tables: slot.booked_tables + 1 })
-          .eq('id', slotId);
+        const { error: updateError } = await supabase.rpc('increment_booked_tables', {
+          slot_id: slotId,
+        });
 
         if (updateError) throw updateError;
       }
