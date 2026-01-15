@@ -96,7 +96,33 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      admin_update_booking_status: {
+        Args: { booking_id: string; new_status: string }
+        Returns: undefined
+      }
+      admin_update_bookings_status: {
+        Args: { booking_ids: string[]; new_status: string }
+        Returns: undefined
+      }
+      get_admin_bookings: {
+        Args: never
+        Returns: {
+          created_at: string
+          customer_email: string
+          customer_name: string
+          id: string
+          party_size: number
+          slot_booked_tables: number
+          slot_booking_mode: string
+          slot_date: string
+          slot_end_time: string
+          slot_id: string
+          slot_name: string
+          slot_time: string
+          slot_total_tables: number
+          status: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
