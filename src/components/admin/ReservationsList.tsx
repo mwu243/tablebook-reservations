@@ -1,9 +1,9 @@
 import { format } from 'date-fns';
 import { CalendarCheck, Loader2, Users } from 'lucide-react';
-import { useUpcomingBookings } from '@/hooks/useBookings';
+import { useAdminUpcomingBookings } from '@/hooks/useAdminBookings';
 
 export function ReservationsList() {
-  const { data: bookings, isLoading } = useUpcomingBookings();
+  const { data: bookings, isLoading } = useAdminUpcomingBookings();
 
   const formatTime = (time: string) => {
     const [hours, minutes] = time.split(':');
