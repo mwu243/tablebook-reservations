@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CalendarDays, User } from 'lucide-react';
+import { CalendarDays, User, Settings } from 'lucide-react';
 import { MealTime, AvailabilitySlot } from '@/lib/types';
 import { useAvailabilitySlots } from '@/hooks/useAvailabilitySlots';
 import { HeroSection } from './HeroSection';
@@ -7,11 +7,13 @@ import { AvailabilityCalendar } from './AvailabilityCalendar';
 import { SlotsPanel } from './SlotsPanel';
 import { BookingModal } from './BookingModal';
 import { MyReservations } from './MyReservations';
+import { AvailabilityManager } from '@/components/admin/AvailabilityManager';
+import { SlotsManager } from '@/components/admin/SlotsManager';
 import { useAuth } from '@/contexts/AuthContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export function CustomerView() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [date, setDate] = useState<Date | undefined>(undefined);
   const [partySize, setPartySize] = useState(2);
   const [mealTime, setMealTime] = useState<MealTime>('all');
@@ -20,6 +22,12 @@ export function CustomerView() {
 
   const { data: slots, isLoading } = useAvailabilitySlots(date, mealTime);
 
+  const getTabGridCols = () => {
+    if (user && isAdmin) return 'grid-cols-3';
+    if (user) return 'grid-cols-2';
+    return 'grid-cols-1';
+  };
+
   return (
     <div className="min-h-screen pb-16">
       <HeroSection />
@@ -27,7 +35,7 @@ export function CustomerView() {
       <div className="container py-12">
         {user ? (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-8">
-            <TabsList className="grid w-full max-w-md mx-auto grid-cols-2">
+            <TabsList className={`grid w-full max-w-lg mx-auto ${getTabGridCols()}`}>
               <TabsTrigger value="book" className="flex items-center gap-2">
                 <CalendarDays className="h-4 w-4" />
                 Book a Table
@@ -36,6 +44,12 @@ export function CustomerView() {
                 <User className="h-4 w-4" />
                 My Reservations
               </TabsTrigger>
+              {isAdmin && (
+                <TabsTrigger value="manage" className="flex items-center gap-2">
+                  <Settings className="h-4 w-4" />
+                  Manage Availability
+                </TabsTrigger>
+              )}
             </TabsList>
             
             <TabsContent value="book" className="mt-8">
@@ -80,6 +94,15 @@ export function CustomerView() {
                 <MyReservations />
               </div>
             </TabsContent>
+
+            {isAdmin && (
+              <TabsContent value="manage" className="mt-8">
+                <div className="mx-auto max-w-4xl space-y-8">
+                  <AvailabilityManager />
+                  <SlotsManager />
+                </div>
+              </TabsContent>
+            )}
           </Tabs>
         ) : (
           <>
