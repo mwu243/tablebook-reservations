@@ -41,6 +41,7 @@ export function AvailabilityManager() {
   const [endTime, setEndTime] = useState('19:00');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [totalSpots, setTotalSpots] = useState(1);
   const [bookingMode, setBookingMode] = useState<BookingMode>('fcfs');
   const [waitlistEnabled, setWaitlistEnabled] = useState(false);
   
@@ -90,7 +91,7 @@ export function AvailabilityManager() {
       date: format(date, 'yyyy-MM-dd'),
       time: startTime,
       end_time: endTime,
-      total_tables: 1,
+      total_tables: totalSpots,
       name: name.trim() || 'Available Table',
       description: description.trim() || null,
       booking_mode: bookingMode,
@@ -107,6 +108,7 @@ export function AvailabilityManager() {
       setDate(undefined);
       setName('');
       setDescription('');
+      setTotalSpots(1);
       setWaitlistEnabled(false);
     } catch (error) {
       toast({
@@ -221,6 +223,25 @@ export function AvailabilityManager() {
               </SelectContent>
             </Select>
           </div>
+
+          {/* Total Spots */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-1.5">
+              <Users className="h-4 w-4" />
+              Available Spots
+            </Label>
+            <Input
+              type="number"
+              min={1}
+              max={100}
+              value={totalSpots}
+              onChange={(e) => setTotalSpots(Math.max(1, parseInt(e.target.value) || 1))}
+              placeholder="1"
+            />
+            <p className="text-xs text-muted-foreground">
+              Number of spots available for this event
+            </p>
+          </div>
         </div>
 
         {/* Booking Mode */}
@@ -298,7 +319,7 @@ export function AvailabilityManager() {
               {name.trim() || 'Available Table'}
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
-              {format(date, 'MMMM d, yyyy')} • {formatTimeDisplay(startTime)} – {formatTimeDisplay(endTime)} • {bookingMode === 'fcfs' ? 'First Come, First Served' : 'Lottery'}
+              {format(date, 'MMMM d, yyyy')} • {formatTimeDisplay(startTime)} – {formatTimeDisplay(endTime)} • {totalSpots} spot{totalSpots > 1 ? 's' : ''} • {bookingMode === 'fcfs' ? 'First Come, First Served' : 'Lottery'}
               {waitlistEnabled && bookingMode === 'fcfs' && ' • Waitlist enabled'}
             </p>
           </div>
