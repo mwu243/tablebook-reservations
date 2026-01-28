@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { format } from 'date-fns';
 import { Calendar, Clock, Loader2, Trash2, Users } from 'lucide-react';
-import { useAllUpcomingSlots, useDeleteAvailabilitySlot } from '@/hooks/useAvailabilitySlots';
+import { useUserOwnedSlots } from '@/hooks/useUserOwnedSlots';
+import { useDeleteAvailabilitySlot } from '@/hooks/useAvailabilitySlots';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -18,7 +19,7 @@ import { toast } from 'sonner';
 import { AvailabilitySlot } from '@/lib/types';
 
 export function SlotsManager() {
-  const { data: slots, isLoading } = useAllUpcomingSlots();
+  const { data: slots, isLoading } = useUserOwnedSlots();
   const deleteSlot = useDeleteAvailabilitySlot();
   
   const [deleteDialog, setDeleteDialog] = useState<{ 
@@ -65,7 +66,7 @@ export function SlotsManager() {
       <div className="admin-card">
         <div className="mb-6 flex items-center gap-2">
           <Calendar className="h-5 w-5 text-primary" />
-          <h2 className="text-xl font-semibold">Upcoming Availability</h2>
+          <h2 className="text-xl font-semibold">Your Upcoming Slots</h2>
           {slots && slots.length > 0 && (
             <Badge variant="secondary" className="ml-2">
               {slots.length} slots
@@ -76,7 +77,7 @@ export function SlotsManager() {
         {!slots || slots.length === 0 ? (
           <div className="py-8 text-center">
             <Calendar className="mx-auto h-10 w-10 text-muted-foreground/50" />
-            <p className="mt-3 text-muted-foreground">No upcoming availability slots</p>
+            <p className="mt-3 text-muted-foreground">You haven't created any availability slots yet</p>
           </div>
         ) : (
           <div className="space-y-3">

@@ -18,7 +18,10 @@ export function useLotteryBookings() {
             total_tables,
             booked_tables,
             name,
-            booking_mode
+            description,
+            booking_mode,
+            created_at,
+            user_id
           )
         `)
         .eq('status', 'pending_lottery')

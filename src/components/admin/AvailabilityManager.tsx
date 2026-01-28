@@ -23,6 +23,7 @@ import { cn } from '@/lib/utils';
 import { useCreateAvailabilitySlots } from '@/hooks/useAvailabilitySlots';
 import { toast } from '@/hooks/use-toast';
 import { BookingMode } from '@/lib/types';
+import { useAuth } from '@/contexts/AuthContext';
 
 const TIME_OPTIONS = [
   '06:00', '06:30', '07:00', '07:30', '08:00', '08:30', '09:00', '09:30',
@@ -33,6 +34,7 @@ const TIME_OPTIONS = [
 ];
 
 export function AvailabilityManager() {
+  const { user } = useAuth();
   const [date, setDate] = useState<Date | undefined>(undefined);
   const [startTime, setStartTime] = useState('17:00');
   const [endTime, setEndTime] = useState('19:00');
@@ -62,6 +64,15 @@ export function AvailabilityManager() {
       return;
     }
 
+    if (!user) {
+      toast({
+        title: 'Error',
+        description: 'You must be logged in to create availability',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     const startIndex = TIME_OPTIONS.indexOf(startTime);
     const endIndex = TIME_OPTIONS.indexOf(endTime);
     
@@ -82,6 +93,7 @@ export function AvailabilityManager() {
       name: name.trim() || 'Available Table',
       description: description.trim() || null,
       booking_mode: bookingMode,
+      user_id: user.id,
     };
 
     try {

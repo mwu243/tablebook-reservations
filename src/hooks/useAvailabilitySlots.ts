@@ -38,6 +38,7 @@ interface CreateSlotInput {
   name: string;
   description: string | null;
   booking_mode: BookingMode;
+  user_id: string;
 }
 
 export function useCreateAvailabilitySlots() {
@@ -58,6 +59,7 @@ export function useCreateAvailabilitySlots() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['availability-slots'] });
       queryClient.invalidateQueries({ queryKey: ['month-availability'] });
+      queryClient.invalidateQueries({ queryKey: ['user-owned-slots'] });
     },
   });
 }
@@ -134,6 +136,8 @@ export function useDeleteAvailabilitySlot() {
       queryClient.invalidateQueries({ queryKey: ['availability-slots'] });
       queryClient.invalidateQueries({ queryKey: ['month-availability'] });
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['user-owned-slots'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-bookings'] });
     },
   });
 }
