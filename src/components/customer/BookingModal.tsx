@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
-import { Loader2, Shuffle, Ticket, PartyPopper, Users, AlertCircle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Loader2, Shuffle, Ticket, PartyPopper, Users, AlertCircle, LogIn } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -33,6 +35,7 @@ interface BookingModalProps {
 }
 
 export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: BookingModalProps) {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -112,6 +115,61 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
   if (!slot) return null;
 
   const isPending = bookSlot.isPending || joinWaitlist.isPending || checkingBooking;
+
+  // Show sign-in prompt if user is not authenticated
+  if (!user) {
+    return (
+      <Dialog open={!!slot} onOpenChange={() => onClose()}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl">Sign In Required</DialogTitle>
+            <DialogDescription>
+              Please sign in or create an account to book this experience.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-2 rounded-lg bg-muted p-4">
+            <p className="font-medium">{slot.name}</p>
+            <div className="mt-2 flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Date</span>
+              <span className="font-medium">{format(new Date(slot.date), 'EEEE, MMMM d, yyyy')}</span>
+            </div>
+            <div className="mt-2 flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Time</span>
+              <span className="font-medium">
+                {formatTime(slot.time)}
+                {slot.end_time && ` – ${formatTime(slot.end_time)}`}
+              </span>
+            </div>
+            <div className="mt-2 flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Party Size</span>
+              <span className="font-medium">{partySize} {partySize === 1 ? 'Guest' : 'Guests'}</span>
+            </div>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            <Button
+              className="w-full"
+              onClick={() => {
+                onClose();
+                navigate('/auth');
+              }}
+            >
+              <LogIn className="mr-2 h-4 w-4" />
+              Sign In to Book
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={onClose}
+            >
+              Cancel
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <>
