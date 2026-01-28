@@ -147,6 +147,43 @@ export function useDeleteAvailabilitySlot() {
   });
 }
 
+interface UpdateSlotInput {
+  slotId: string;
+  updates: {
+    name?: string;
+    description?: string | null;
+    date?: string;
+    time?: string;
+    end_time?: string | null;
+    total_tables?: number;
+    waitlist_enabled?: boolean;
+  };
+}
+
+export function useUpdateAvailabilitySlot() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ slotId, updates }: UpdateSlotInput) => {
+      const { data, error } = await supabase
+        .from('availability_slots')
+        .update(updates)
+        .eq('id', slotId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as AvailabilitySlot;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['availability-slots'] });
+      queryClient.invalidateQueries({ queryKey: ['user-owned-slots'] });
+      queryClient.invalidateQueries({ queryKey: ['month-availability'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-bookings'] });
+    },
+  });
+}
+
 export function useAllUpcomingSlots() {
   return useQuery({
     queryKey: ['upcoming-slots'],

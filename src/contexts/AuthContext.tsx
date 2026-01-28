@@ -2,13 +2,18 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
+interface PaymentInfo {
+  venmoUsername?: string;
+  zelleIdentifier?: string;
+}
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   isLoading: boolean;
   isAdmin: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, paymentInfo?: PaymentInfo) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -83,17 +88,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error as Error | null };
   };
 
-  const signUp = async (email: string, password: string) => {
+  const signUp = async (email: string, password: string, paymentInfo?: PaymentInfo) => {
     const redirectUrl = `${window.location.origin}/`;
     
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         emailRedirectTo: redirectUrl,
       },
     });
-    return { error: error as Error | null };
+    
+    if (error) {
+      return { error: error as Error | null };
+    }
+
+    // Create user profile with payment info if signup succeeded and we have a user
+    if (data.user && paymentInfo) {
+      const { error: profileError } = await supabase
+        .from('user_profiles')
+        .insert({
+          user_id: data.user.id,
+          venmo_username: paymentInfo.venmoUsername || null,
+          zelle_identifier: paymentInfo.zelleIdentifier || null,
+        });
+      
+      if (profileError) {
+        console.error('Error creating user profile:', profileError);
+        // Don't fail signup if profile creation fails - user can update later
+      }
+    }
+
+    return { error: null };
   };
 
   const signOut = async () => {
