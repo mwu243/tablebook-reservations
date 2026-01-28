@@ -87,7 +87,12 @@ export function EditSlotModal({ open, onOpenChange, slot }: EditSlotModalProps) 
       toast.success('Event updated successfully');
       onOpenChange(false);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to update event');
+      const message = error instanceof Error ? error.message : 'Failed to update event';
+      if (message.includes('duplicate key') || message.includes('23505')) {
+        toast.error('Another event already exists at this date and time');
+      } else {
+        toast.error(message);
+      }
     }
   };
 
