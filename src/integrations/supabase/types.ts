@@ -273,6 +273,10 @@ export type Database = {
           promoted_user_id: string
         }[]
       }
+      user_has_booking_for_slot: {
+        Args: { p_slot_id: string; p_user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role: "admin" | "moderator" | "user"

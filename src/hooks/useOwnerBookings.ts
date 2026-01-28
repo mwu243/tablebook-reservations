@@ -55,6 +55,58 @@ export function useOwnerBookings() {
   });
 }
 
+// Fetch ALL bookings (including past events) for slots owned by the current user
+export function useOwnerAllBookings() {
+  const { user } = useAuth();
+
+  return useQuery({
+    queryKey: ['owner-all-bookings', user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+
+      // First get all slots owned by the user (no date filter)
+      const { data: ownedSlots, error: slotsError } = await supabase
+        .from('availability_slots')
+        .select('id')
+        .eq('user_id', user.id);
+
+      if (slotsError) throw slotsError;
+      if (!ownedSlots || ownedSlots.length === 0) return [];
+
+      const slotIds = ownedSlots.map(s => s.id);
+
+      // Get all bookings for those slots (including past)
+      const { data, error } = await supabase
+        .from('bookings')
+        .select(`
+          *,
+          availability_slots (
+            id,
+            date,
+            time,
+            end_time,
+            total_tables,
+            booked_tables,
+            name,
+            description,
+            booking_mode,
+            created_at,
+            user_id,
+            waitlist_enabled
+          )
+        `)
+        .in('slot_id', slotIds)
+        .eq('status', 'confirmed')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data as Booking[];
+    },
+    enabled: !!user,
+    refetchInterval: 5000,
+  });
+}
+
 // Fetch lottery entries for slots owned by the current user
 export function useOwnerLotteryBookings() {
   const { user } = useAuth();
