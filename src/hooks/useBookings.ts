@@ -23,7 +23,8 @@ export function useUpcomingBookings() {
             description,
             booking_mode,
             created_at,
-            user_id
+            user_id,
+            waitlist_enabled
           )
         `)
         .eq('status', 'confirmed')

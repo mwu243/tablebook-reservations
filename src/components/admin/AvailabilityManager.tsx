@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { format } from 'date-fns';
-import { CalendarIcon, Clock, Loader2, Plus, Tag, FileText, Ticket, Shuffle } from 'lucide-react';
+import { CalendarIcon, Clock, Loader2, Plus, Tag, FileText, Ticket, Shuffle, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Switch } from '@/components/ui/switch';
 import {
   Popover,
   PopoverContent,
@@ -41,6 +42,7 @@ export function AvailabilityManager() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [bookingMode, setBookingMode] = useState<BookingMode>('fcfs');
+  const [waitlistEnabled, setWaitlistEnabled] = useState(false);
   
   const createSlots = useCreateAvailabilitySlots();
 
@@ -93,6 +95,7 @@ export function AvailabilityManager() {
       description: description.trim() || null,
       booking_mode: bookingMode,
       user_id: user.id,
+      waitlist_enabled: waitlistEnabled,
     };
 
     try {
@@ -104,6 +107,7 @@ export function AvailabilityManager() {
       setDate(undefined);
       setName('');
       setDescription('');
+      setWaitlistEnabled(false);
     } catch (error) {
       toast({
         title: 'Error',
@@ -266,6 +270,26 @@ export function AvailabilityManager() {
           </RadioGroup>
         </div>
 
+        {/* Waitlist Toggle - Only show for FCFS mode */}
+        {bookingMode === 'fcfs' && (
+          <div className="flex items-center justify-between rounded-lg border p-4">
+            <div className="space-y-0.5">
+              <Label htmlFor="waitlist" className="flex items-center gap-2 font-medium">
+                <Users className="h-4 w-4" />
+                Enable Waitlist
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                When fully booked, customers can join a waitlist. If someone cancels, the next person is automatically promoted and notified.
+              </p>
+            </div>
+            <Switch
+              id="waitlist"
+              checked={waitlistEnabled}
+              onCheckedChange={setWaitlistEnabled}
+            />
+          </div>
+        )}
+
         {/* Preview */}
         {date && (
           <div className="rounded-lg bg-muted p-4">
@@ -275,6 +299,7 @@ export function AvailabilityManager() {
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
               {format(date, 'MMMM d, yyyy')} • {formatTimeDisplay(startTime)} – {formatTimeDisplay(endTime)} • {bookingMode === 'fcfs' ? 'First Come, First Served' : 'Lottery'}
+              {waitlistEnabled && bookingMode === 'fcfs' && ' • Waitlist enabled'}
             </p>
           </div>
         )}

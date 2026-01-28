@@ -12,6 +12,7 @@ export interface AvailabilitySlot {
   booking_mode: BookingMode;
   created_at: string;
   user_id: string | null;
+  waitlist_enabled: boolean;
 }
 
 export interface Booking {
@@ -23,6 +24,19 @@ export interface Booking {
   status: 'confirmed' | 'pending_lottery' | 'cancelled' | 'completed';
   created_at: string;
   availability_slots?: AvailabilitySlot;
+}
+
+export interface WaitlistEntry {
+  id: string;
+  slot_id: string;
+  user_id: string;
+  customer_name: string;
+  customer_email: string;
+  customer_phone: string | null;
+  party_size: number;
+  position: number;
+  created_at: string;
+  notified_at: string | null;
 }
 
 export type ViewMode = 'customer' | 'admin';

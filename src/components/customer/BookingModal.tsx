@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
-import { Check, Loader2, Shuffle, Ticket, PartyPopper } from 'lucide-react';
+import { Loader2, Shuffle, Ticket, PartyPopper, Users } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -20,23 +20,27 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AvailabilitySlot } from '@/lib/types';
 import { useBookSlot } from '@/hooks/useAvailabilitySlots';
+import { useJoinWaitlist } from '@/hooks/useWaitlist';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface BookingModalProps {
   slot: AvailabilitySlot | null;
   partySize: number;
   onClose: () => void;
+  isWaitlist?: boolean;
 }
 
-export function BookingModal({ slot, partySize, onClose }: BookingModalProps) {
+export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: BookingModalProps) {
   const { user } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [successDialog, setSuccessDialog] = useState<{ open: boolean; isLottery: boolean }>({
+  const [phone, setPhone] = useState('');
+  const [successDialog, setSuccessDialog] = useState<{ open: boolean; type: 'booking' | 'lottery' | 'waitlist' }>({
     open: false,
-    isLottery: false,
+    type: 'booking',
   });
   const bookSlot = useBookSlot();
+  const joinWaitlist = useJoinWaitlist();
 
   // Pre-fill email from authenticated user
   useEffect(() => {
@@ -57,37 +61,52 @@ export function BookingModal({ slot, partySize, onClose }: BookingModalProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!slot || !name.trim() || !email.trim()) return;
+    if (!slot || !name.trim() || !email.trim() || !user) return;
 
     try {
-      await bookSlot.mutateAsync({
-        slotId: slot.id,
-        customerName: name.trim(),
-        customerEmail: email.trim(),
-        partySize,
-        userId: user?.id,
-        isLottery,
-      });
-      
-      // Close the form modal first
-      onClose();
-      
-      // Reset form
-      setName('');
-      setEmail('');
-      
-      // Show success dialog
-      setSuccessDialog({ open: true, isLottery });
+      if (isWaitlist) {
+        await joinWaitlist.mutateAsync({
+          slotId: slot.id,
+          customerName: name.trim(),
+          customerEmail: email.trim(),
+          customerPhone: phone.trim() || undefined,
+          partySize,
+          userId: user.id,
+        });
+        
+        onClose();
+        setName('');
+        setEmail('');
+        setPhone('');
+        setSuccessDialog({ open: true, type: 'waitlist' });
+      } else {
+        await bookSlot.mutateAsync({
+          slotId: slot.id,
+          customerName: name.trim(),
+          customerEmail: email.trim(),
+          partySize,
+          userId: user.id,
+          isLottery,
+        });
+        
+        onClose();
+        setName('');
+        setEmail('');
+        setPhone('');
+        setSuccessDialog({ open: true, type: isLottery ? 'lottery' : 'booking' });
+      }
     } catch (error) {
       console.error('Booking failed:', error);
     }
   };
 
   const handleCloseSuccessDialog = () => {
-    setSuccessDialog({ open: false, isLottery: false });
+    setSuccessDialog({ open: false, type: 'booking' });
   };
 
   if (!slot) return null;
+
+  const isPending = bookSlot.isPending || joinWaitlist.isPending;
 
   return (
     <>
@@ -95,13 +114,18 @@ export function BookingModal({ slot, partySize, onClose }: BookingModalProps) {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="text-xl">
-              {isLottery ? 'Enter Lottery' : 'Complete Your Reservation'}
+              {isWaitlist ? 'Join Waitlist' : isLottery ? 'Enter Lottery' : 'Complete Your Reservation'}
             </DialogTitle>
           </DialogHeader>
 
           <div className="mt-2 rounded-lg bg-muted p-4">
             <div className="mb-2 flex items-center gap-2">
-              {isLottery ? (
+              {isWaitlist ? (
+                <span className="flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
+                  <Users className="h-3 w-3" />
+                  Waitlist
+                </span>
+              ) : isLottery ? (
                 <span className="flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
                   <Shuffle className="h-3 w-3" />
                   Lottery
@@ -131,11 +155,15 @@ export function BookingModal({ slot, partySize, onClose }: BookingModalProps) {
             </div>
           </div>
 
-          {isLottery && (
+          {isWaitlist ? (
+            <p className="text-sm text-muted-foreground">
+              This event is currently full. Join the waitlist and you'll be notified if a spot opens up.
+            </p>
+          ) : isLottery ? (
             <p className="text-sm text-muted-foreground">
               This is a lottery event. Submitting your details enters you for a chance to be selected. You will be notified by email if you win.
             </p>
-          )}
+          ) : null}
 
           <form onSubmit={handleSubmit} className="mt-4 space-y-4">
             <div className="space-y-2">
@@ -159,6 +187,21 @@ export function BookingModal({ slot, partySize, onClose }: BookingModalProps) {
                 required
               />
             </div>
+            {isWaitlist && (
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone Number (Optional)</Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="+1 (555) 123-4567"
+                />
+                <p className="text-xs text-muted-foreground">
+                  For text notifications when a spot opens up
+                </p>
+              </div>
+            )}
             <div className="flex gap-3 pt-2">
               <Button
                 type="button"
@@ -171,12 +214,17 @@ export function BookingModal({ slot, partySize, onClose }: BookingModalProps) {
               <Button
                 type="submit"
                 className="flex-1 bg-accent hover:bg-accent/90"
-                disabled={bookSlot.isPending}
+                disabled={isPending}
               >
-                {bookSlot.isPending ? (
+                {isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {isLottery ? 'Entering...' : 'Booking...'}
+                    {isWaitlist ? 'Joining...' : isLottery ? 'Entering...' : 'Booking...'}
+                  </>
+                ) : isWaitlist ? (
+                  <>
+                    <Users className="mr-2 h-4 w-4" />
+                    Join Waitlist
                   </>
                 ) : isLottery ? (
                   <>
@@ -197,19 +245,27 @@ export function BookingModal({ slot, partySize, onClose }: BookingModalProps) {
         <AlertDialogContent className="sm:max-w-md">
           <AlertDialogHeader className="text-center sm:text-center">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-success/10">
-              {successDialog.isLottery ? (
+              {successDialog.type === 'waitlist' ? (
+                <Users className="h-8 w-8 text-success" />
+              ) : successDialog.type === 'lottery' ? (
                 <Shuffle className="h-8 w-8 text-success" />
               ) : (
                 <PartyPopper className="h-8 w-8 text-success" />
               )}
             </div>
             <AlertDialogTitle className="text-xl">
-              {successDialog.isLottery ? 'Fingers Crossed!' : 'Reservation Confirmed!'}
+              {successDialog.type === 'waitlist' 
+                ? 'You\'re on the Waitlist!' 
+                : successDialog.type === 'lottery' 
+                  ? 'Fingers Crossed!' 
+                  : 'Reservation Confirmed!'}
             </AlertDialogTitle>
             <AlertDialogDescription className="text-base">
-              {successDialog.isLottery
-                ? 'You have been entered into the lottery. Winners will be notified via email.'
-                : 'We look forward to seeing you.'}
+              {successDialog.type === 'waitlist'
+                ? 'We\'ll notify you by email if a spot opens up.'
+                : successDialog.type === 'lottery'
+                  ? 'You have been entered into the lottery. Winners will be notified via email.'
+                  : 'We look forward to seeing you.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="sm:justify-center">
