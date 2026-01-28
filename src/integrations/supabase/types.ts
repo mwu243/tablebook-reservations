@@ -257,7 +257,9 @@ export type Database = {
         }
         Returns: boolean
       }
-      increment_booked_tables: { Args: { slot_id: string }; Returns: undefined }
+      increment_booked_tables:
+        | { Args: { slot_id: string }; Returns: undefined }
+        | { Args: { amount?: number; slot_id: string }; Returns: undefined }
       is_admin: { Args: never; Returns: boolean }
       is_slot_owner: { Args: { _slot_id: string }; Returns: boolean }
       promote_waitlist_entry: {
