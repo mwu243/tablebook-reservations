@@ -107,6 +107,7 @@ export function useBookSlot() {
       if (!isLottery) {
         const { error: updateError } = await supabase.rpc('increment_booked_tables', {
           slot_id: slotId,
+          amount: partySize,
         });
 
         if (updateError) throw updateError;

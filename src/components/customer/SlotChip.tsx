@@ -11,11 +11,12 @@ import { cn } from '@/lib/utils';
 interface SlotChipProps {
   slot: AvailabilitySlot;
   isAvailable: boolean;
+  partySize: number;
   onClick: () => void;
   onWaitlistClick?: () => void;
 }
 
-export function SlotChip({ slot, isAvailable, onClick, onWaitlistClick }: SlotChipProps) {
+export function SlotChip({ slot, isAvailable, partySize, onClick, onWaitlistClick }: SlotChipProps) {
   const formatTime = (time: string) => {
     const [hours, minutes] = time.split(':');
     const hour = parseInt(hours);
@@ -26,11 +27,13 @@ export function SlotChip({ slot, isAvailable, onClick, onWaitlistClick }: SlotCh
 
   const isLottery = slot.booking_mode === 'lottery';
   const remainingTables = slot.total_tables - slot.booked_tables;
+  // Check if there are enough spots for the party size
+  const hasEnoughSpots = remainingTables >= partySize;
   const isFull = remainingTables <= 0;
-  const hasWaitlist = slot.waitlist_enabled && isFull && !isLottery;
+  const hasWaitlist = slot.waitlist_enabled && !hasEnoughSpots && !isLottery;
   
-  // Lottery slots are always clickable; FCFS only if available or has waitlist
-  const canClick = isLottery || isAvailable || hasWaitlist;
+  // Lottery slots are always clickable; FCFS only if enough spots available or has waitlist
+  const canClick = isLottery || (isAvailable && hasEnoughSpots) || hasWaitlist;
 
   const handleClick = () => {
     if (hasWaitlist && onWaitlistClick) {

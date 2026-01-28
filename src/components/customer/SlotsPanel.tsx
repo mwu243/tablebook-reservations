@@ -105,12 +105,14 @@ export function SlotsPanel({
           </p>
           <div className="flex flex-wrap gap-3">
             {slots.map((slot) => {
-              const isAvailable = slot.booked_tables < slot.total_tables;
+              const remainingSpots = slot.total_tables - slot.booked_tables;
+              const isAvailable = remainingSpots >= partySize;
               return (
                 <SlotChip
                   key={slot.id}
                   slot={slot}
                   isAvailable={isAvailable}
+                  partySize={partySize}
                   onClick={() => onSlotClick(slot)}
                   onWaitlistClick={onWaitlistClick ? () => onWaitlistClick(slot) : undefined}
                 />
