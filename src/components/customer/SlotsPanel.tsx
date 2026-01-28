@@ -61,11 +61,8 @@ export function SlotsPanel({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
-                <SelectItem key={n} value={n.toString()}>
-                  {n} {n === 1 ? 'Guest' : 'Guests'}
-                </SelectItem>
-              ))}
+              <SelectItem value="1">1 Guest (Just me)</SelectItem>
+              <SelectItem value="2">2 Guests (+1)</SelectItem>
             </SelectContent>
           </Select>
         </div>
