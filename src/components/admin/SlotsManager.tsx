@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { format } from 'date-fns';
-import { Calendar, Clock, Loader2, Trash2, Users } from 'lucide-react';
+import { Calendar, Clock, Loader2, Pencil, Trash2, Users } from 'lucide-react';
 import { useUserOwnedSlots } from '@/hooks/useUserOwnedSlots';
 import { useDeleteAvailabilitySlot } from '@/hooks/useAvailabilitySlots';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { AvailabilitySlot } from '@/lib/types';
+import { EditSlotModal } from './EditSlotModal';
 
 export function SlotsManager() {
   const { data: slots, isLoading } = useUserOwnedSlots();
@@ -25,6 +26,14 @@ export function SlotsManager() {
   const [deleteDialog, setDeleteDialog] = useState<{ 
     open: boolean; 
     slot: AvailabilitySlot | null 
+  }>({
+    open: false,
+    slot: null,
+  });
+
+  const [editDialog, setEditDialog] = useState<{
+    open: boolean;
+    slot: AvailabilitySlot | null;
   }>({
     open: false,
     slot: null,
@@ -92,6 +101,11 @@ export function SlotsManager() {
                     <Badge variant={slot.booking_mode === 'lottery' ? 'default' : 'secondary'}>
                       {slot.booking_mode === 'lottery' ? 'Lottery' : 'FCFS'}
                     </Badge>
+                    {slot.waitlist_enabled && (
+                      <Badge variant="outline" className="text-xs">
+                        Waitlist
+                      </Badge>
+                    )}
                   </div>
                   <div className="flex items-center gap-4 text-sm text-muted-foreground">
                     <span className="flex items-center gap-1">
@@ -105,8 +119,8 @@ export function SlotsManager() {
                     </span>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="text-right">
+                <div className="flex items-center gap-2">
+                  <div className="text-right mr-2">
                     <p className="flex items-center justify-end gap-1 text-sm font-medium">
                       <Users className="h-3.5 w-3.5" />
                       {slot.booked_tables}/{slot.total_tables} booked
@@ -115,8 +129,17 @@ export function SlotsManager() {
                   <Button
                     size="icon"
                     variant="ghost"
+                    onClick={() => setEditDialog({ open: true, slot })}
+                    title="Edit event"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
                     className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                     onClick={() => setDeleteDialog({ open: true, slot })}
+                    title="Delete event"
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -126,6 +149,13 @@ export function SlotsManager() {
           </div>
         )}
       </div>
+
+      {/* Edit Slot Modal */}
+      <EditSlotModal
+        open={editDialog.open}
+        onOpenChange={(open) => !open && setEditDialog({ open: false, slot: null })}
+        slot={editDialog.slot}
+      />
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog 

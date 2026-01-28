@@ -7,13 +7,29 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { UtensilsCrossed, Loader2, AlertCircle } from 'lucide-react';
+import { UtensilsCrossed, Loader2, AlertCircle, CreditCard } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
-const authSchema = z.object({
+const signInSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
 });
+
+const signUpSchema = z.object({
+  email: z.string().email('Please enter a valid email address'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+  venmoUsername: z.string().optional(),
+  zelleIdentifier: z.string().optional(),
+}).refine((data) => data.venmoUsername || data.zelleIdentifier, {
+  message: 'Please provide at least one payment method (Venmo or Zelle)',
+  path: ['payment'],
+});
+
+// Venmo username validation: alphanumeric, underscores, hyphens, 5-30 chars
+const venmoRegex = /^[a-zA-Z0-9][a-zA-Z0-9_-]{4,29}$/;
+// Zelle: email or phone
+const zelleEmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const zellePhoneRegex = /^[+]?[(]?[0-9]{1,3}[)]?[-\s.]?[0-9]{3}[-\s.]?[0-9]{4,6}$/;
 
 export default function Auth() {
   const navigate = useNavigate();
@@ -21,9 +37,17 @@ export default function Auth() {
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [venmoUsername, setVenmoUsername] = useState('');
+  const [zelleIdentifier, setZelleIdentifier] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [validationErrors, setValidationErrors] = useState<{ email?: string; password?: string }>({});
+  const [validationErrors, setValidationErrors] = useState<{ 
+    email?: string; 
+    password?: string;
+    venmoUsername?: string;
+    zelleIdentifier?: string;
+    payment?: string;
+  }>({});
 
   // Redirect if already logged in
   useEffect(() => {
@@ -32,14 +56,14 @@ export default function Auth() {
     }
   }, [user, authLoading, navigate]);
 
-  const validateForm = () => {
+  const validateSignIn = () => {
     try {
-      authSchema.parse({ email, password });
+      signInSchema.parse({ email, password });
       setValidationErrors({});
       return true;
     } catch (err) {
       if (err instanceof z.ZodError) {
-        const errors: { email?: string; password?: string } = {};
+        const errors: typeof validationErrors = {};
         err.errors.forEach((e) => {
           if (e.path[0] === 'email') errors.email = e.message;
           if (e.path[0] === 'password') errors.password = e.message;
@@ -50,11 +74,41 @@ export default function Auth() {
     }
   };
 
+  const validateSignUp = () => {
+    const errors: typeof validationErrors = {};
+    
+    // Basic validation
+    try {
+      signUpSchema.parse({ email, password, venmoUsername, zelleIdentifier });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        err.errors.forEach((e) => {
+          if (e.path[0] === 'email') errors.email = e.message;
+          if (e.path[0] === 'password') errors.password = e.message;
+          if (e.path[0] === 'payment') errors.payment = e.message;
+        });
+      }
+    }
+    
+    // Venmo format validation
+    if (venmoUsername && !venmoRegex.test(venmoUsername)) {
+      errors.venmoUsername = 'Venmo username must be 5-30 characters (letters, numbers, underscores, hyphens)';
+    }
+    
+    // Zelle format validation
+    if (zelleIdentifier && !zelleEmailRegex.test(zelleIdentifier) && !zellePhoneRegex.test(zelleIdentifier)) {
+      errors.zelleIdentifier = 'Please enter a valid email or phone number';
+    }
+    
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     
-    if (!validateForm()) return;
+    if (!validateSignIn()) return;
     
     setIsLoading(true);
     const { error } = await signIn(email, password);
@@ -73,10 +127,13 @@ export default function Auth() {
     e.preventDefault();
     setError(null);
     
-    if (!validateForm()) return;
+    if (!validateSignUp()) return;
     
     setIsLoading(true);
-    const { error } = await signUp(email, password);
+    const { error } = await signUp(email, password, {
+      venmoUsername: venmoUsername || undefined,
+      zelleIdentifier: zelleIdentifier || undefined,
+    });
     setIsLoading(false);
     
     if (error) {
@@ -86,6 +143,11 @@ export default function Auth() {
         setError(error.message);
       }
     }
+  };
+
+  const clearFormErrors = () => {
+    setError(null);
+    setValidationErrors({});
   };
 
   if (authLoading) {
@@ -132,8 +194,7 @@ export default function Auth() {
                     value={email}
                     onChange={(e) => {
                       setEmail(e.target.value);
-                      setError(null);
-                      setValidationErrors({});
+                      clearFormErrors();
                     }}
                     className={validationErrors.email ? 'border-destructive' : ''}
                   />
@@ -150,8 +211,7 @@ export default function Auth() {
                     value={password}
                     onChange={(e) => {
                       setPassword(e.target.value);
-                      setError(null);
-                      setValidationErrors({});
+                      clearFormErrors();
                     }}
                     className={validationErrors.password ? 'border-destructive' : ''}
                   />
@@ -197,8 +257,7 @@ export default function Auth() {
                     value={email}
                     onChange={(e) => {
                       setEmail(e.target.value);
-                      setError(null);
-                      setValidationErrors({});
+                      clearFormErrors();
                     }}
                     className={validationErrors.email ? 'border-destructive' : ''}
                   />
@@ -215,14 +274,76 @@ export default function Auth() {
                     value={password}
                     onChange={(e) => {
                       setPassword(e.target.value);
-                      setError(null);
-                      setValidationErrors({});
+                      clearFormErrors();
                     }}
                     className={validationErrors.password ? 'border-destructive' : ''}
                   />
                   {validationErrors.password && (
                     <p className="text-sm text-destructive">{validationErrors.password}</p>
                   )}
+                </div>
+
+                {/* Payment Info Section */}
+                <div className="rounded-lg border border-border p-4 space-y-4">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <CreditCard className="h-4 w-4 text-muted-foreground" />
+                    <span>Payment Information</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Provide at least one payment method. This allows event hosts to request payment from participants.
+                  </p>
+                  
+                  {validationErrors.payment && (
+                    <p className="text-sm text-destructive">{validationErrors.payment}</p>
+                  )}
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-venmo">Venmo Username</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">@</span>
+                      <Input
+                        id="signup-venmo"
+                        type="text"
+                        placeholder="username"
+                        value={venmoUsername}
+                        onChange={(e) => {
+                          setVenmoUsername(e.target.value.replace('@', ''));
+                          clearFormErrors();
+                        }}
+                        className={`pl-8 ${validationErrors.venmoUsername ? 'border-destructive' : ''}`}
+                      />
+                    </div>
+                    {validationErrors.venmoUsername && (
+                      <p className="text-sm text-destructive">{validationErrors.venmoUsername}</p>
+                    )}
+                  </div>
+                  
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-card px-2 text-muted-foreground">or</span>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-zelle">Zelle Email or Phone</Label>
+                    <Input
+                      id="signup-zelle"
+                      type="text"
+                      placeholder="email@example.com or (555) 123-4567"
+                      value={zelleIdentifier}
+                      onChange={(e) => {
+                        setZelleIdentifier(e.target.value);
+                        clearFormErrors();
+                      }}
+                      className={validationErrors.zelleIdentifier ? 'border-destructive' : ''}
+                    />
+                    {validationErrors.zelleIdentifier && (
+                      <p className="text-sm text-destructive">{validationErrors.zelleIdentifier}</p>
+                    )}
+                  </div>
                 </div>
               </CardContent>
               <CardFooter>

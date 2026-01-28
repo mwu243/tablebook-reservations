@@ -39,6 +39,16 @@ export interface WaitlistEntry {
   notified_at: string | null;
 }
 
+export interface UserProfile {
+  id: string;
+  user_id: string;
+  display_name: string | null;
+  venmo_username: string | null;
+  zelle_identifier: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export type ViewMode = 'customer' | 'admin';
 export type MealTime = 'breakfast' | 'lunch' | 'dinner' | 'all';
 
