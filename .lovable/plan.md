@@ -1,15 +1,19 @@
 
-# User-Specific Availability Management
+# Waitlist & Customer Cancellation Features
 
-This plan transforms the system so that every authenticated user can create and manage their own availability slots (events), while only being able to administer the specific events they personally created.
+This plan adds two key features: (1) optional waitlist functionality when creating events, with automatic promotion and notifications when someone cancels, and (2) the ability for customers to cancel their own reservations from "My Reservations".
 
 ## Summary
 
-Currently, only users with the `admin` role can create/manage availability slots. This plan changes the model so:
-- Any logged-in user can create availability slots
-- Users can only edit/delete slots they created
-- Users can only manage lottery drawings and view bookings for their own slots
-- The "Manage Availability" tab becomes visible to all logged-in users
+**Feature 1 - Waitlist:**
+- Add a toggle when creating events to enable/disable waitlist
+- When enabled and a slot is fully booked, customers can join the waitlist
+- When a booking is cancelled, the first person on the waitlist is automatically promoted and notified
+
+**Feature 2 - Customer Cancellation:**
+- Add a "Cancel Reservation" button to each upcoming booking in "My Reservations"
+- Show confirmation dialog before cancelling
+- Trigger waitlist promotion logic when a booking is cancelled
 
 ---
 
@@ -17,58 +21,83 @@ Currently, only users with the `admin` role can create/manage availability slots
 
 ### 1. Database Schema Changes
 
-Add a `user_id` column to the `availability_slots` table to track who created each slot.
+**Add waitlist columns to `availability_slots`:**
+- `waitlist_enabled` (boolean, default false) - Whether waitlist is active for this slot
 
-**Migration includes:**
-- Add `user_id` column (UUID, references auth.users)
-- Update existing slots to have a default owner (or set to NULL for legacy data)
-- Update RLS policies:
-  - **SELECT**: Anyone can view slots (for booking calendar)
-  - **INSERT**: Authenticated users can create slots (automatically sets their user_id)
-  - **UPDATE**: Users can only update their own slots
-  - **DELETE**: Users can only delete their own slots
+**Create new `waitlist_entries` table:**
+- `id` (uuid, primary key)
+- `slot_id` (uuid, foreign key to availability_slots)
+- `user_id` (uuid, references auth.users)
+- `customer_name` (text)
+- `customer_email` (text)
+- `customer_phone` (text, nullable) - For SMS/WhatsApp notifications
+- `party_size` (integer)
+- `position` (integer) - Queue position
+- `created_at` (timestamp)
+- `notified_at` (timestamp, nullable) - When they were notified of promotion
 
-### 2. Create Helper Function for Slot Ownership
+**Add RLS policies for waitlist_entries:**
+- Users can view their own waitlist entries
+- Users can insert their own waitlist entries
+- Slot owners can view waitlist entries for their slots
+- Slot owners can delete/update waitlist entries for their slots
 
-Create a security definer function `is_slot_owner(slot_id)` to safely check if the current user owns a specific availability slot.
+**Add DELETE policy to bookings table:**
+- Users can cancel (delete) their own bookings
 
-### 3. Update RLS Policies for Bookings
+### 2. Create Edge Function for Notifications
 
-Create new policies so users can manage bookings (lottery entries) for slots they own:
-- Users can view bookings for slots they created
-- Users can update booking status for their own slots
+Create `notify-waitlist-promotion` edge function that:
+- Accepts a booking ID and slot ID
+- Fetches the next person on the waitlist
+- Creates a confirmed booking for them
+- Removes them from the waitlist
+- Sends notification via email (using Resend)
+- Optionally sends SMS/WhatsApp (future enhancement)
 
-### 4. Create New RPC Functions for Slot Owner Operations
+### 3. Create Database Function for Cancellation + Waitlist Promotion
 
-Replace admin-only RPC functions with owner-based versions:
-- `get_owner_slot_bookings()` - Get all bookings for slots the current user owns
-- `owner_update_booking_status()` - Update booking status for owned slots
+Create `cancel_booking_with_waitlist` RPC function that:
+- Verifies the user owns the booking
+- Deletes the booking
+- Decrements booked_tables on the slot
+- If waitlist is enabled and has entries, calls promotion logic
+- Returns success/failure status
 
-### 5. Update Frontend Components
-
-**CustomerView.tsx:**
-- Show "Manage Availability" tab to ALL logged-in users (remove `isAdmin` check)
-- Update tab grid to always show 3 columns for logged-in users
+### 4. Update Frontend Components
 
 **AvailabilityManager.tsx:**
-- Automatically include `user_id` when creating slots
+- Add "Enable Waitlist" toggle switch
+- Pass `waitlist_enabled` when creating slots
 
-**SlotsManager.tsx:**
-- Filter to show only slots created by the current user
-- Create new hook `useUserOwnedSlots()` to fetch user's own slots
+**MyReservations.tsx:**
+- Add "Cancel Reservation" button to each upcoming confirmed booking
+- Show confirmation dialog with warning
+- Call cancellation mutation
+- Show success toast after cancellation
 
-**LotteryManager.tsx:**
-- Filter lottery entries to only show bookings for user's own slots
-- Create new hook `useOwnerLotteryBookings()` to fetch lottery entries for owned slots
-- Update confirmation/rejection to use owner-based RPC functions
+**BookingModal.tsx:**
+- When slot is full but waitlist is enabled, show "Join Waitlist" option
+- Different UI/messaging for joining waitlist vs booking
 
-**ReservationsList.tsx (for owner view):**
-- Show only bookings for slots the current user created
-- Create new hook `useOwnerBookings()` for this purpose
+**SlotChip.tsx / AvailableSlots.tsx:**
+- Show waitlist indicator when slot is full but waitlist is available
+- Update button text: "Join Waitlist" instead of "Sold Out"
 
-### 6. Update TypeScript Types
+### 5. Create New Hooks
 
-Update `AvailabilitySlot` interface in `src/lib/types.ts` to include `user_id` field.
+**useCancelBooking:**
+- Mutation to cancel a booking
+- Triggers waitlist promotion via edge function
+- Invalidates relevant query caches
+
+**useJoinWaitlist:**
+- Mutation to add user to waitlist
+- Creates entry with proper position
+
+**useUserWaitlistEntries:**
+- Query to fetch user's waitlist entries
+- Display in "My Reservations" section
 
 ---
 
@@ -77,103 +106,202 @@ Update `AvailabilitySlot` interface in `src/lib/types.ts` to include `user_id` f
 ### Database Migration SQL
 
 ```sql
--- Add user_id column to availability_slots
+-- Add waitlist_enabled to availability_slots
 ALTER TABLE public.availability_slots 
-ADD COLUMN user_id uuid REFERENCES auth.users(id);
+ADD COLUMN waitlist_enabled boolean NOT NULL DEFAULT false;
 
--- Create index for performance
-CREATE INDEX idx_availability_slots_user_id ON public.availability_slots(user_id);
+-- Create waitlist_entries table
+CREATE TABLE public.waitlist_entries (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  slot_id uuid REFERENCES public.availability_slots(id) ON DELETE CASCADE NOT NULL,
+  user_id uuid REFERENCES auth.users(id) NOT NULL,
+  customer_name text NOT NULL,
+  customer_email text NOT NULL,
+  customer_phone text,
+  party_size integer NOT NULL,
+  position integer NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  notified_at timestamptz
+);
 
--- Create function to check slot ownership
-CREATE OR REPLACE FUNCTION public.is_slot_owner(slot_id uuid)
-RETURNS boolean
+-- Index for efficient queries
+CREATE INDEX idx_waitlist_entries_slot_id ON public.waitlist_entries(slot_id);
+CREATE INDEX idx_waitlist_entries_user_id ON public.waitlist_entries(user_id);
+CREATE INDEX idx_waitlist_entries_position ON public.waitlist_entries(slot_id, position);
+
+-- Enable RLS
+ALTER TABLE public.waitlist_entries ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for waitlist_entries
+CREATE POLICY "Users can view own waitlist entries"
+ON public.waitlist_entries FOR SELECT
+TO authenticated
+USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can join waitlist"
+ON public.waitlist_entries FOR INSERT
+TO authenticated
+WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can leave waitlist"
+ON public.waitlist_entries FOR DELETE
+TO authenticated
+USING (auth.uid() = user_id);
+
+CREATE POLICY "Slot owners can view waitlist"
+ON public.waitlist_entries FOR SELECT
+TO authenticated
+USING (is_slot_owner(slot_id));
+
+CREATE POLICY "Slot owners can manage waitlist"
+ON public.waitlist_entries FOR DELETE
+TO authenticated
+USING (is_slot_owner(slot_id));
+
+-- Add DELETE policy to bookings for customer cancellation
+CREATE POLICY "Users can cancel own bookings"
+ON public.bookings FOR DELETE
+TO authenticated
+USING (auth.uid() = user_id);
+
+-- Function to get next waitlist position
+CREATE OR REPLACE FUNCTION public.get_next_waitlist_position(p_slot_id uuid)
+RETURNS integer
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT EXISTS (
-    SELECT 1
-    FROM public.availability_slots
-    WHERE id = slot_id
-      AND user_id = auth.uid()
-  )
+  SELECT COALESCE(MAX(position), 0) + 1
+  FROM public.waitlist_entries
+  WHERE slot_id = p_slot_id
 $$;
 
--- Update RLS policies for availability_slots
-DROP POLICY IF EXISTS "Admins can create availability slots" ON public.availability_slots;
-DROP POLICY IF EXISTS "Admins can delete availability slots" ON public.availability_slots;
-DROP POLICY IF EXISTS "Admins can update availability slots" ON public.availability_slots;
-
--- Authenticated users can create their own slots
-CREATE POLICY "Users can create own availability slots"
-ON public.availability_slots FOR INSERT
-TO authenticated
-WITH CHECK (auth.uid() = user_id);
-
--- Users can only update their own slots
-CREATE POLICY "Users can update own availability slots"
-ON public.availability_slots FOR UPDATE
-TO authenticated
-USING (auth.uid() = user_id);
-
--- Users can only delete their own slots
-CREATE POLICY "Users can delete own availability slots"
-ON public.availability_slots FOR DELETE
-TO authenticated
-USING (auth.uid() = user_id);
-
--- Add policy for slot owners to manage bookings
-CREATE POLICY "Slot owners can view bookings for their slots"
-ON public.bookings FOR SELECT
-TO authenticated
-USING (
-  auth.uid() = user_id 
-  OR is_slot_owner(slot_id)
-);
-
-CREATE POLICY "Slot owners can update bookings for their slots"
-ON public.bookings FOR UPDATE
-TO authenticated
-USING (is_slot_owner(slot_id));
+-- Function to promote next waitlist entry
+CREATE OR REPLACE FUNCTION public.promote_waitlist_entry(p_slot_id uuid)
+RETURNS TABLE(
+  entry_id uuid,
+  customer_name text,
+  customer_email text,
+  customer_phone text,
+  party_size integer,
+  user_id uuid
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  next_entry RECORD;
+BEGIN
+  -- Get the first person on the waitlist
+  SELECT * INTO next_entry
+  FROM public.waitlist_entries we
+  WHERE we.slot_id = p_slot_id
+  ORDER BY we.position ASC
+  LIMIT 1;
+  
+  IF next_entry IS NULL THEN
+    RETURN;
+  END IF;
+  
+  -- Create booking for them
+  INSERT INTO public.bookings (slot_id, user_id, customer_name, customer_email, party_size, status)
+  VALUES (p_slot_id, next_entry.user_id, next_entry.customer_name, next_entry.customer_email, next_entry.party_size, 'confirmed');
+  
+  -- Remove from waitlist
+  DELETE FROM public.waitlist_entries WHERE id = next_entry.id;
+  
+  -- Reorder remaining positions
+  UPDATE public.waitlist_entries
+  SET position = position - 1
+  WHERE slot_id = p_slot_id AND position > next_entry.position;
+  
+  RETURN QUERY SELECT 
+    next_entry.id,
+    next_entry.customer_name,
+    next_entry.customer_email,
+    next_entry.customer_phone,
+    next_entry.party_size,
+    next_entry.user_id;
+END;
+$$;
 ```
 
-### New Hooks to Create
+### Edge Function: notify-waitlist-promotion
 
-1. **`useUserOwnedSlots()`** - Fetches upcoming slots where `user_id` matches current user
-2. **`useOwnerLotteryBookings()`** - Fetches pending lottery bookings for user's slots
-3. **`useOwnerBookings()`** - Fetches all bookings for user's slots
+```typescript
+// supabase/functions/notify-waitlist-promotion/index.ts
+// Sends email notification when user is promoted from waitlist
+// Uses Resend API for email delivery
+// Future: Can add Twilio for SMS or WhatsApp
+```
 
-### Files to Modify
+### Files to Create/Modify
 
 | File | Changes |
 |------|---------|
-| `src/components/customer/CustomerView.tsx` | Remove `isAdmin` check for "Manage Availability" tab |
-| `src/components/admin/AvailabilityManager.tsx` | Pass `user_id` when creating slots |
-| `src/components/admin/SlotsManager.tsx` | Use new hook to filter by ownership |
-| `src/components/admin/LotteryManager.tsx` | Filter lottery entries by slot ownership |
-| `src/hooks/useAvailabilitySlots.ts` | Add `user_id` to create mutation, add owner-filtered hooks |
-| `src/hooks/useLotteryBookings.ts` | Add owner-based lottery queries and mutations |
-| `src/lib/types.ts` | Add `user_id` to `AvailabilitySlot` type |
-
----
-
-## Security Considerations
-
-- RLS ensures users can only modify their own slots at the database level
-- The `is_slot_owner()` function uses `SECURITY DEFINER` to safely check ownership
-- Bookings remain protected: users see their own bookings OR bookings for slots they own
-- No client-side role checks for authorization - all enforced at database level
+| `src/lib/types.ts` | Add `waitlist_enabled` to AvailabilitySlot, add WaitlistEntry type |
+| `src/components/admin/AvailabilityManager.tsx` | Add waitlist toggle switch |
+| `src/components/customer/MyReservations.tsx` | Add cancel button and confirmation dialog |
+| `src/components/customer/BookingModal.tsx` | Add "Join Waitlist" flow when slot is full |
+| `src/components/customer/SlotChip.tsx` | Update UI for waitlist-enabled full slots |
+| `src/hooks/useAvailabilitySlots.ts` | Add `waitlist_enabled` to slot creation |
+| `src/hooks/useUserBookings.ts` | Add cancellation mutation |
+| `src/hooks/useWaitlist.ts` (new) | Waitlist join/leave/query hooks |
+| `supabase/functions/notify-waitlist-promotion/index.ts` (new) | Notification edge function |
 
 ---
 
 ## User Experience Flow
 
-1. User logs in
-2. User sees 3 tabs: "Book a Table", "My Reservations", "Manage Availability"
-3. In "Manage Availability":
-   - User creates a new availability slot (automatically tied to their account)
-   - User sees only their own upcoming slots
-   - User can manage lottery drawings only for their own events
-   - User can view/manage bookings only for their own events
+### Creating an Event with Waitlist
+1. User fills out event details
+2. User toggles "Enable Waitlist" switch
+3. Event is created with `waitlist_enabled: true`
 
+### Customer Joining Waitlist
+1. Customer selects a sold-out slot that has waitlist enabled
+2. Sees "Join Waitlist" button instead of "Sold Out"
+3. Fills out name/email/party size
+4. Receives confirmation they're on the waitlist with their position
+
+### Customer Cancelling Reservation
+1. Customer goes to "My Reservations"
+2. Clicks "Cancel" on an upcoming reservation
+3. Sees confirmation dialog: "Are you sure you want to cancel?"
+4. Confirms cancellation
+5. Booking is removed, next waitlist person is promoted and notified
+
+### Waitlist Promotion
+1. When a booking is cancelled for a waitlist-enabled slot
+2. System automatically promotes the first waitlist entry to confirmed
+3. Sends email notification to the promoted customer
+4. Other waitlist entries move up in position
+
+---
+
+## Notification Options
+
+For the initial implementation, email notifications will be sent via Resend. The database stores `customer_phone` for future SMS/WhatsApp integration.
+
+**Email notification includes:**
+- Event name and details
+- Confirmation that they've been promoted from the waitlist
+- Date, time, and party size
+- Link to view their reservation
+
+**Future enhancements:**
+- SMS notifications via Twilio
+- WhatsApp notifications via Twilio WhatsApp API
+- User preference for notification channel
+
+---
+
+## Security Considerations
+
+- RLS ensures users can only cancel their own bookings
+- `is_slot_owner()` function protects slot owner operations
+- Waitlist entries are scoped to authenticated users
+- Edge function validates requests and uses service role for promotions
+- All database functions use `SECURITY DEFINER` with explicit `search_path`
