@@ -46,7 +46,7 @@ export function Navbar({ viewMode, onViewModeChange }: NavbarProps) {
       <div className="container flex h-16 items-center justify-between">
         <Link to="/" className="flex items-center gap-2">
           <UtensilsCrossed className="h-6 w-6 text-accent" />
-          <span className="text-xl font-semibold tracking-tight">TableBook</span>
+          <span className="text-xl font-semibold tracking-tight">Kellogg MMM SGD</span>
         </Link>
 
         <div className="flex items-center gap-4">
