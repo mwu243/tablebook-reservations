@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
-import { Loader2, Shuffle, Ticket, PartyPopper, Users } from 'lucide-react';
+import { Loader2, Shuffle, Ticket, PartyPopper, Users, AlertCircle } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -18,10 +18,12 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AvailabilitySlot } from '@/lib/types';
 import { useBookSlot } from '@/hooks/useAvailabilitySlots';
 import { useJoinWaitlist } from '@/hooks/useWaitlist';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUserSlotBooking } from '@/hooks/useUserSlotBooking';
 
 interface BookingModalProps {
   slot: AvailabilitySlot | null;
@@ -41,6 +43,9 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
   });
   const bookSlot = useBookSlot();
   const joinWaitlist = useJoinWaitlist();
+  const { data: existingBooking, isLoading: checkingBooking } = useUserSlotBooking(slot?.id ?? null);
+  
+  const hasExistingBooking = !!existingBooking;
 
   // Pre-fill email from authenticated user
   useEffect(() => {
@@ -61,7 +66,7 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!slot || !name.trim() || !email.trim() || !user) return;
+    if (!slot || !name.trim() || !email.trim() || !user || hasExistingBooking) return;
 
     try {
       if (isWaitlist) {
@@ -106,7 +111,7 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
 
   if (!slot) return null;
 
-  const isPending = bookSlot.isPending || joinWaitlist.isPending;
+  const isPending = bookSlot.isPending || joinWaitlist.isPending || checkingBooking;
 
   return (
     <>
@@ -155,7 +160,14 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
             </div>
           </div>
 
-          {isWaitlist ? (
+          {hasExistingBooking ? (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                You already have a reservation for this event. Each person can only book once per event.
+              </AlertDescription>
+            </Alert>
+          ) : isWaitlist ? (
             <p className="text-sm text-muted-foreground">
               This event is currently full. Join the waitlist and you'll be notified if a spot opens up.
             </p>
@@ -214,7 +226,7 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
               <Button
                 type="submit"
                 className="flex-1 bg-accent hover:bg-accent/90"
-                disabled={isPending}
+                disabled={isPending || hasExistingBooking}
               >
                 {isPending ? (
                   <>
