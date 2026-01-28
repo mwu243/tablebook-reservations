@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { format } from 'date-fns';
-import { CalendarIcon, Clock, Loader2, Plus, TableIcon, Tag, FileText, Ticket, Shuffle } from 'lucide-react';
+import { CalendarIcon, Clock, Loader2, Plus, Tag, FileText, Ticket, Shuffle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Input } from '@/components/ui/input';
@@ -38,7 +38,6 @@ export function AvailabilityManager() {
   const [date, setDate] = useState<Date | undefined>(undefined);
   const [startTime, setStartTime] = useState('17:00');
   const [endTime, setEndTime] = useState('19:00');
-  const [totalTables, setTotalTables] = useState(5);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [bookingMode, setBookingMode] = useState<BookingMode>('fcfs');
@@ -89,7 +88,7 @@ export function AvailabilityManager() {
       date: format(date, 'yyyy-MM-dd'),
       time: startTime,
       end_time: endTime,
-      total_tables: totalTables,
+      total_tables: 1,
       name: name.trim() || 'Available Table',
       description: description.trim() || null,
       booking_mode: bookingMode,
@@ -177,21 +176,6 @@ export function AvailabilityManager() {
                 />
               </PopoverContent>
             </Popover>
-          </div>
-
-          {/* Total Tables */}
-          <div className="space-y-2">
-            <Label className="flex items-center gap-1.5">
-              <TableIcon className="h-4 w-4" />
-              Total Tables
-            </Label>
-            <Input
-              type="number"
-              min={1}
-              max={50}
-              value={totalTables}
-              onChange={(e) => setTotalTables(Number(e.target.value))}
-            />
           </div>
 
           {/* Start Time */}
@@ -290,7 +274,7 @@ export function AvailabilityManager() {
               {name.trim() || 'Available Table'}
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
-              {format(date, 'MMMM d, yyyy')} • {formatTimeDisplay(startTime)} – {formatTimeDisplay(endTime)} • {totalTables} tables • {bookingMode === 'fcfs' ? 'First Come, First Served' : 'Lottery'}
+              {format(date, 'MMMM d, yyyy')} • {formatTimeDisplay(startTime)} – {formatTimeDisplay(endTime)} • {bookingMode === 'fcfs' ? 'First Come, First Served' : 'Lottery'}
             </p>
           </div>
         )}
