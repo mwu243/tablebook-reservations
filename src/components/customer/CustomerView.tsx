@@ -9,6 +9,8 @@ import { BookingModal } from './BookingModal';
 import { MyReservations } from './MyReservations';
 import { AvailabilityManager } from '@/components/admin/AvailabilityManager';
 import { SlotsManager } from '@/components/admin/SlotsManager';
+import { LotteryManager } from '@/components/admin/LotteryManager';
+import { ReservationsList } from '@/components/admin/ReservationsList';
 import { useAuth } from '@/contexts/AuthContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -23,8 +25,8 @@ export function CustomerView() {
   const { data: slots, isLoading } = useAvailabilitySlots(date, mealTime);
 
   const getTabGridCols = () => {
-    if (user && isAdmin) return 'grid-cols-3';
-    if (user) return 'grid-cols-2';
+    // All logged-in users can manage their own availability
+    if (user) return 'grid-cols-3';
     return 'grid-cols-1';
   };
 
@@ -44,12 +46,10 @@ export function CustomerView() {
                 <User className="h-4 w-4" />
                 My Reservations
               </TabsTrigger>
-              {isAdmin && (
-                <TabsTrigger value="manage" className="flex items-center gap-2">
-                  <Settings className="h-4 w-4" />
-                  Manage Availability
-                </TabsTrigger>
-              )}
+              <TabsTrigger value="manage" className="flex items-center gap-2">
+                <Settings className="h-4 w-4" />
+                Manage Availability
+              </TabsTrigger>
             </TabsList>
             
             <TabsContent value="book" className="mt-8">
@@ -95,14 +95,14 @@ export function CustomerView() {
               </div>
             </TabsContent>
 
-            {isAdmin && (
-              <TabsContent value="manage" className="mt-8">
-                <div className="mx-auto max-w-4xl space-y-8">
-                  <AvailabilityManager />
-                  <SlotsManager />
-                </div>
-              </TabsContent>
-            )}
+            <TabsContent value="manage" className="mt-8">
+              <div className="mx-auto max-w-4xl space-y-8">
+                <AvailabilityManager />
+                <SlotsManager />
+                <LotteryManager />
+                <ReservationsList />
+              </div>
+            </TabsContent>
           </Tabs>
         ) : (
           <>

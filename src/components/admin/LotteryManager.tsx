@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { format } from 'date-fns';
 import { Check, Dices, Loader2, Mail, Ticket, Trophy, Users, X } from 'lucide-react';
-import { useLotteryBookings, useConfirmLotteryWinner, useRejectLotteryEntry, usePickRandomWinner } from '@/hooks/useLotteryBookings';
+import { useOwnerLotteryBookings } from '@/hooks/useOwnerBookings';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -16,12 +16,12 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { Booking } from '@/lib/types';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 
 export function LotteryManager() {
-  const { data: lotteryEntries, isLoading } = useLotteryBookings();
-  const confirmWinner = useConfirmLotteryWinner();
-  const rejectEntry = useRejectLotteryEntry();
-  const pickRandomWinner = usePickRandomWinner();
+  const { data: lotteryEntries, isLoading } = useOwnerLotteryBookings();
+  const queryClient = useQueryClient();
   
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; booking: Booking | null }>({
     open: false,
@@ -43,6 +43,149 @@ export function LotteryManager() {
     entries: [],
   });
 
+  // Confirm winner mutation
+  const confirmWinner = useMutation({
+    mutationFn: async ({ bookingId, slotId }: { bookingId: string; slotId: string }) => {
+      // Get current slot to update booked_tables
+      const { data: slot, error: slotError } = await supabase
+        .from('availability_slots')
+        .select('booked_tables, total_tables')
+        .eq('id', slotId)
+        .single();
+
+      if (slotError) throw slotError;
+      if (!slot) throw new Error('Slot not found');
+
+      if (slot.booked_tables >= slot.total_tables) {
+        throw new Error('No tables available - slot is fully booked');
+      }
+
+      // Update booking status to confirmed
+      const { error: bookingError } = await supabase
+        .from('bookings')
+        .update({ status: 'confirmed' })
+        .eq('id', bookingId);
+
+      if (bookingError) throw bookingError;
+
+      // Increment booked_tables
+      const { error: updateError } = await supabase
+        .from('availability_slots')
+        .update({ booked_tables: slot.booked_tables + 1 })
+        .eq('id', slotId);
+
+      if (updateError) throw updateError;
+
+      return { success: true };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['owner-lottery-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['availability-slots'] });
+      queryClient.invalidateQueries({ queryKey: ['user-owned-slots'] });
+      queryClient.invalidateQueries({ queryKey: ['month-availability'] });
+    },
+  });
+
+  // Reject entry mutation
+  const rejectEntry = useMutation({
+    mutationFn: async ({ bookingId }: { bookingId: string }) => {
+      const { error } = await supabase
+        .from('bookings')
+        .update({ status: 'cancelled' })
+        .eq('id', bookingId);
+
+      if (error) throw error;
+      return { success: true };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['owner-lottery-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-bookings'] });
+    },
+  });
+
+  // Pick random winner mutation
+  const pickRandomWinner = useMutation({
+    mutationFn: async ({ 
+      slotId, 
+      entries, 
+      winnersCount = 1,
+      rejectOthers = true 
+    }: { 
+      slotId: string; 
+      entries: Booking[]; 
+      winnersCount?: number;
+      rejectOthers?: boolean;
+    }) => {
+      if (entries.length === 0) {
+        throw new Error('No entries to pick from');
+      }
+
+      // Get current slot info
+      const { data: slot, error: slotError } = await supabase
+        .from('availability_slots')
+        .select('booked_tables, total_tables')
+        .eq('id', slotId)
+        .single();
+
+      if (slotError) throw slotError;
+      if (!slot) throw new Error('Slot not found');
+
+      const availableSpots = slot.total_tables - slot.booked_tables;
+      const actualWinnersCount = Math.min(winnersCount, entries.length, availableSpots);
+
+      if (actualWinnersCount <= 0) {
+        throw new Error('No spots available for winners');
+      }
+
+      // Shuffle and pick winners
+      const shuffled = [...entries].sort(() => Math.random() - 0.5);
+      const winners = shuffled.slice(0, actualWinnersCount);
+      const losers = shuffled.slice(actualWinnersCount);
+
+      // Update winners to confirmed
+      const winnerIds = winners.map(w => w.id);
+      const { error: winnerError } = await supabase
+        .from('bookings')
+        .update({ status: 'confirmed' })
+        .in('id', winnerIds);
+
+      if (winnerError) throw winnerError;
+
+      // Optionally reject others
+      if (rejectOthers && losers.length > 0) {
+        const loserIds = losers.map(l => l.id);
+        const { error: loserError } = await supabase
+          .from('bookings')
+          .update({ status: 'cancelled' })
+          .in('id', loserIds);
+
+        if (loserError) throw loserError;
+      }
+
+      // Update booked_tables count
+      const { error: updateError } = await supabase
+        .from('availability_slots')
+        .update({ booked_tables: slot.booked_tables + actualWinnersCount })
+        .eq('id', slotId);
+
+      if (updateError) throw updateError;
+
+      return { 
+        winners, 
+        rejected: rejectOthers ? losers : [],
+        winnersCount: actualWinnersCount 
+      };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['owner-lottery-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['availability-slots'] });
+      queryClient.invalidateQueries({ queryKey: ['user-owned-slots'] });
+      queryClient.invalidateQueries({ queryKey: ['month-availability'] });
+    },
+  });
+
   const formatTime = (time: string) => {
     const [hours, minutes] = time.split(':');
     const hour = parseInt(hours);
@@ -60,7 +203,6 @@ export function LotteryManager() {
         slotId: confirmDialog.booking.slot_id,
       });
       
-      // Simulate email notification
       toast.success(
         <div className="flex items-center gap-2">
           <Mail className="h-4 w-4" />
@@ -98,7 +240,6 @@ export function LotteryManager() {
 
       const winner = result.winners[0];
       
-      // Show success with winner info
       toast.success(
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2 font-medium">
@@ -115,9 +256,6 @@ export function LotteryManager() {
         </div>,
         { duration: 5000 }
       );
-
-      // Optional: Open mailto link for manual follow-up
-      // window.open(`mailto:${winner.customer_email}?subject=Congratulations! You Won the Lottery&body=Dear ${winner.customer_name},%0A%0AYou have been selected as a winner for ${randomPickDialog.slotName}!%0A%0AWe look forward to seeing you.`);
 
       setRandomPickDialog({ open: false, slotId: null, slotName: '', entries: [] });
     } catch (error) {
@@ -157,7 +295,7 @@ export function LotteryManager() {
       <div className="admin-card">
         <div className="mb-6 flex items-center gap-2">
           <Ticket className="h-5 w-5 text-primary" />
-          <h2 className="text-xl font-semibold">Lottery Drawings</h2>
+          <h2 className="text-xl font-semibold">Your Lottery Drawings</h2>
           {lotteryEntries && lotteryEntries.length > 0 && (
             <Badge variant="secondary" className="ml-2">
               {lotteryEntries.length} pending
@@ -168,7 +306,7 @@ export function LotteryManager() {
         {slotGroups.length === 0 ? (
           <div className="py-8 text-center">
             <Ticket className="mx-auto h-10 w-10 text-muted-foreground/50" />
-            <p className="mt-3 text-muted-foreground">No pending lottery entries</p>
+            <p className="mt-3 text-muted-foreground">No pending lottery entries for your events</p>
           </div>
         ) : (
           <div className="space-y-6">

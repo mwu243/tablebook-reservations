@@ -1,9 +1,9 @@
 import { format } from 'date-fns';
 import { CalendarCheck, Loader2, Users } from 'lucide-react';
-import { useAdminUpcomingBookings } from '@/hooks/useAdminBookings';
+import { useOwnerBookings } from '@/hooks/useOwnerBookings';
 
 export function ReservationsList() {
-  const { data: bookings, isLoading } = useAdminUpcomingBookings();
+  const { data: bookings, isLoading } = useOwnerBookings();
 
   const formatTime = (time: string) => {
     const [hours, minutes] = time.split(':');
@@ -28,12 +28,12 @@ export function ReservationsList() {
 
   return (
     <div className="admin-card">
-      <h2 className="mb-6 text-xl font-semibold">Upcoming Reservations</h2>
+      <h2 className="mb-6 text-xl font-semibold">Reservations for Your Events</h2>
       
       {validBookings.length === 0 ? (
         <div className="py-8 text-center">
           <CalendarCheck className="mx-auto h-10 w-10 text-muted-foreground/50" />
-          <p className="mt-3 text-muted-foreground">No upcoming reservations</p>
+          <p className="mt-3 text-muted-foreground">No confirmed reservations for your events</p>
         </div>
       ) : (
         <div className="space-y-3">

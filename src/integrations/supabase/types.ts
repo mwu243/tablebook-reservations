@@ -26,6 +26,7 @@ export type Database = {
           name: string
           time: string
           total_tables: number
+          user_id: string | null
         }
         Insert: {
           booked_tables?: number
@@ -38,6 +39,7 @@ export type Database = {
           name?: string
           time: string
           total_tables?: number
+          user_id?: string | null
         }
         Update: {
           booked_tables?: number
@@ -50,6 +52,7 @@ export type Database = {
           name?: string
           time?: string
           total_tables?: number
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -157,6 +160,7 @@ export type Database = {
       }
       increment_booked_tables: { Args: { slot_id: string }; Returns: undefined }
       is_admin: { Args: never; Returns: boolean }
+      is_slot_owner: { Args: { _slot_id: string }; Returns: boolean }
     }
     Enums: {
       app_role: "admin" | "moderator" | "user"

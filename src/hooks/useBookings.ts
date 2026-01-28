@@ -16,8 +16,14 @@ export function useUpcomingBookings() {
             id,
             date,
             time,
+            end_time,
             total_tables,
-            booked_tables
+            booked_tables,
+            name,
+            description,
+            booking_mode,
+            created_at,
+            user_id
           )
         `)
         .eq('status', 'confirmed')

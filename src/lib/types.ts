@@ -11,6 +11,7 @@ export interface AvailabilitySlot {
   description: string | null;
   booking_mode: BookingMode;
   created_at: string;
+  user_id: string | null;
 }
 
 export interface Booking {
