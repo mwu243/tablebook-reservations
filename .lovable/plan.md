@@ -1,307 +1,391 @@
 
-# Waitlist & Customer Cancellation Features
+# Payment Info & Event Editing Features
 
-This plan adds two key features: (1) optional waitlist functionality when creating events, with automatic promotion and notifications when someone cancels, and (2) the ability for customers to cancel their own reservations from "My Reservations".
+This plan implements three features: (1) collecting Venmo/Zelle usernames during signup, (2) allowing hosts to view participant payment information securely, and (3) enabling hosts to edit events without canceling them.
 
 ## Summary
 
-**Feature 1 - Waitlist:**
-- Add a toggle when creating events to enable/disable waitlist
-- When enabled and a slot is fully booked, customers can join the waitlist
-- When a booking is cancelled, the first person on the waitlist is automatically promoted and notified
+**Feature 1 - Payment Info Collection:**
+- Add Venmo/Zelle username fields to the signup form
+- Create a secure `user_profiles` table to store payment info (separate from auth)
+- RLS policies ensure users can only see their own payment info
 
-**Feature 2 - Customer Cancellation:**
-- Add a "Cancel Reservation" button to each upcoming booking in "My Reservations"
-- Show confirmation dialog before cancelling
-- Trigger waitlist promotion logic when a booking is cancelled
+**Feature 2 - Host Payment Info Access:**
+- Create a secure database view that hides payment info from direct access
+- Create an RPC function that only returns payment info for participants of events the host owns
+- Display participant payment info in a dedicated section on the Admin Dashboard
+
+**Feature 3 - Event Editing:**
+- Add an "Edit" button to each slot in the SlotsManager
+- Create an edit modal to update event details (name, description, date, time, waitlist settings)
+- Create an update mutation in useAvailabilitySlots hook
+
+---
+
+## Security Architecture for Payment Info (Critical)
+
+Payment usernames (Venmo/Zelle) are considered PII and require careful handling:
+
+**Security Strategy:**
+1. Store payment info in a separate `user_profiles` table (not in auth.users)
+2. Base table has RLS that only allows users to read their OWN profile
+3. Create a SECURITY DEFINER function `get_participant_payment_info(slot_id)` that:
+   - Verifies the caller owns the slot using `is_slot_owner()`
+   - Returns payment info ONLY for users who have bookings for that specific slot
+   - Cannot be exploited to fetch arbitrary user payment info
+4. Frontend never directly queries payment info - always uses the secure RPC
+
+**Data Flow:**
+
+```text
++------------------+     +-------------------+     +----------------------+
+|  Host requests   | --> | get_participant_  | --> | Verify slot_owner    |
+|  payment info    |     | payment_info()    |     | via is_slot_owner()  |
++------------------+     +-------------------+     +----------------------+
+                                                            |
+                                                            v
+                                                   +----------------------+
+                                                   | Join user_profiles   |
+                                                   | with bookings WHERE  |
+                                                   | slot_id matches      |
+                                                   +----------------------+
+                                                            |
+                                                            v
+                                                   +----------------------+
+                                                   | Return ONLY matching |
+                                                   | participant data     |
+                                                   +----------------------+
+```
 
 ---
 
 ## Implementation Steps
 
-### 1. Database Schema Changes
+### 1. Database Changes
 
-**Add waitlist columns to `availability_slots`:**
-- `waitlist_enabled` (boolean, default false) - Whether waitlist is active for this slot
-
-**Create new `waitlist_entries` table:**
-- `id` (uuid, primary key)
-- `slot_id` (uuid, foreign key to availability_slots)
-- `user_id` (uuid, references auth.users)
-- `customer_name` (text)
-- `customer_email` (text)
-- `customer_phone` (text, nullable) - For SMS/WhatsApp notifications
-- `party_size` (integer)
-- `position` (integer) - Queue position
-- `created_at` (timestamp)
-- `notified_at` (timestamp, nullable) - When they were notified of promotion
-
-**Add RLS policies for waitlist_entries:**
-- Users can view their own waitlist entries
-- Users can insert their own waitlist entries
-- Slot owners can view waitlist entries for their slots
-- Slot owners can delete/update waitlist entries for their slots
-
-**Add DELETE policy to bookings table:**
-- Users can cancel (delete) their own bookings
-
-### 2. Create Edge Function for Notifications
-
-Create `notify-waitlist-promotion` edge function that:
-- Accepts a booking ID and slot ID
-- Fetches the next person on the waitlist
-- Creates a confirmed booking for them
-- Removes them from the waitlist
-- Sends notification via email (using Resend)
-- Optionally sends SMS/WhatsApp (future enhancement)
-
-### 3. Create Database Function for Cancellation + Waitlist Promotion
-
-Create `cancel_booking_with_waitlist` RPC function that:
-- Verifies the user owns the booking
-- Deletes the booking
-- Decrements booked_tables on the slot
-- If waitlist is enabled and has entries, calls promotion logic
-- Returns success/failure status
-
-### 4. Update Frontend Components
-
-**AvailabilityManager.tsx:**
-- Add "Enable Waitlist" toggle switch
-- Pass `waitlist_enabled` when creating slots
-
-**MyReservations.tsx:**
-- Add "Cancel Reservation" button to each upcoming confirmed booking
-- Show confirmation dialog with warning
-- Call cancellation mutation
-- Show success toast after cancellation
-
-**BookingModal.tsx:**
-- When slot is full but waitlist is enabled, show "Join Waitlist" option
-- Different UI/messaging for joining waitlist vs booking
-
-**SlotChip.tsx / AvailableSlots.tsx:**
-- Show waitlist indicator when slot is full but waitlist is available
-- Update button text: "Join Waitlist" instead of "Sold Out"
-
-### 5. Create New Hooks
-
-**useCancelBooking:**
-- Mutation to cancel a booking
-- Triggers waitlist promotion via edge function
-- Invalidates relevant query caches
-
-**useJoinWaitlist:**
-- Mutation to add user to waitlist
-- Creates entry with proper position
-
-**useUserWaitlistEntries:**
-- Query to fetch user's waitlist entries
-- Display in "My Reservations" section
-
----
-
-## Technical Details
-
-### Database Migration SQL
+**Create `user_profiles` table:**
 
 ```sql
--- Add waitlist_enabled to availability_slots
-ALTER TABLE public.availability_slots 
-ADD COLUMN waitlist_enabled boolean NOT NULL DEFAULT false;
-
--- Create waitlist_entries table
-CREATE TABLE public.waitlist_entries (
+CREATE TABLE public.user_profiles (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  slot_id uuid REFERENCES public.availability_slots(id) ON DELETE CASCADE NOT NULL,
-  user_id uuid REFERENCES auth.users(id) NOT NULL,
-  customer_name text NOT NULL,
-  customer_email text NOT NULL,
-  customer_phone text,
-  party_size integer NOT NULL,
-  position integer NOT NULL,
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL UNIQUE,
+  display_name text,
+  venmo_username text,
+  zelle_identifier text,
   created_at timestamptz NOT NULL DEFAULT now(),
-  notified_at timestamptz
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 
--- Index for efficient queries
-CREATE INDEX idx_waitlist_entries_slot_id ON public.waitlist_entries(slot_id);
-CREATE INDEX idx_waitlist_entries_user_id ON public.waitlist_entries(user_id);
-CREATE INDEX idx_waitlist_entries_position ON public.waitlist_entries(slot_id, position);
+CREATE INDEX idx_user_profiles_user_id ON public.user_profiles(user_id);
 
--- Enable RLS
-ALTER TABLE public.waitlist_entries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
 
--- RLS Policies for waitlist_entries
-CREATE POLICY "Users can view own waitlist entries"
-ON public.waitlist_entries FOR SELECT
+-- Users can only see and update their own profile
+CREATE POLICY "Users can view own profile"
+ON public.user_profiles FOR SELECT
 TO authenticated
 USING (auth.uid() = user_id);
 
-CREATE POLICY "Users can join waitlist"
-ON public.waitlist_entries FOR INSERT
+CREATE POLICY "Users can insert own profile"
+ON public.user_profiles FOR INSERT
 TO authenticated
 WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY "Users can leave waitlist"
-ON public.waitlist_entries FOR DELETE
+CREATE POLICY "Users can update own profile"
+ON public.user_profiles FOR UPDATE
 TO authenticated
-USING (auth.uid() = user_id);
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
+```
 
-CREATE POLICY "Slot owners can view waitlist"
-ON public.waitlist_entries FOR SELECT
-TO authenticated
-USING (is_slot_owner(slot_id));
+**Create secure RPC function for hosts:**
 
-CREATE POLICY "Slot owners can manage waitlist"
-ON public.waitlist_entries FOR DELETE
-TO authenticated
-USING (is_slot_owner(slot_id));
-
--- Add DELETE policy to bookings for customer cancellation
-CREATE POLICY "Users can cancel own bookings"
-ON public.bookings FOR DELETE
-TO authenticated
-USING (auth.uid() = user_id);
-
--- Function to get next waitlist position
-CREATE OR REPLACE FUNCTION public.get_next_waitlist_position(p_slot_id uuid)
-RETURNS integer
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT COALESCE(MAX(position), 0) + 1
-  FROM public.waitlist_entries
-  WHERE slot_id = p_slot_id
-$$;
-
--- Function to promote next waitlist entry
-CREATE OR REPLACE FUNCTION public.promote_waitlist_entry(p_slot_id uuid)
+```sql
+CREATE OR REPLACE FUNCTION public.get_participant_payment_info(p_slot_id uuid)
 RETURNS TABLE(
-  entry_id uuid,
+  booking_id uuid,
   customer_name text,
   customer_email text,
-  customer_phone text,
   party_size integer,
-  user_id uuid
+  venmo_username text,
+  zelle_identifier text
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-DECLARE
-  next_entry RECORD;
 BEGIN
-  -- Get the first person on the waitlist
-  SELECT * INTO next_entry
-  FROM public.waitlist_entries we
-  WHERE we.slot_id = p_slot_id
-  ORDER BY we.position ASC
-  LIMIT 1;
-  
-  IF next_entry IS NULL THEN
-    RETURN;
+  -- Authorization check: Only slot owners can access this
+  IF NOT is_slot_owner(p_slot_id) THEN
+    RAISE EXCEPTION 'Unauthorized: Only the event host can view payment info';
   END IF;
-  
-  -- Create booking for them
-  INSERT INTO public.bookings (slot_id, user_id, customer_name, customer_email, party_size, status)
-  VALUES (p_slot_id, next_entry.user_id, next_entry.customer_name, next_entry.customer_email, next_entry.party_size, 'confirmed');
-  
-  -- Remove from waitlist
-  DELETE FROM public.waitlist_entries WHERE id = next_entry.id;
-  
-  -- Reorder remaining positions
-  UPDATE public.waitlist_entries
-  SET position = position - 1
-  WHERE slot_id = p_slot_id AND position > next_entry.position;
-  
-  RETURN QUERY SELECT 
-    next_entry.id,
-    next_entry.customer_name,
-    next_entry.customer_email,
-    next_entry.customer_phone,
-    next_entry.party_size,
-    next_entry.user_id;
+
+  RETURN QUERY
+  SELECT 
+    b.id as booking_id,
+    b.customer_name,
+    b.customer_email,
+    b.party_size,
+    up.venmo_username,
+    up.zelle_identifier
+  FROM public.bookings b
+  LEFT JOIN public.user_profiles up ON b.user_id = up.user_id
+  WHERE b.slot_id = p_slot_id
+    AND b.status = 'confirmed';
 END;
 $$;
 ```
 
-### Edge Function: notify-waitlist-promotion
+**Add UPDATE policy to availability_slots for editing:**
+(Already exists - "Users can update own availability slots")
+
+### 2. Update Signup Flow
+
+**Modify Auth.tsx:**
+- Add fields for Venmo username and Zelle identifier during signup
+- Make at least one payment method required
+- After successful signup, create a user_profile record with payment info
+
+**Modify AuthContext.tsx:**
+- Update signUp function to accept payment info
+- Create profile after auth signup succeeds
+
+### 3. Create Hooks for Payment Info
+
+**Create useUserProfile hook:**
+- Query to fetch current user's profile
+- Mutation to update profile
+
+**Create useParticipantPaymentInfo hook:**
+- RPC call to `get_participant_payment_info(slot_id)`
+- Only callable by slot owners
+
+### 4. Update Frontend Components
+
+**Auth.tsx (Signup form):**
+- Add Venmo username input field
+- Add Zelle identifier input field
+- Validate at least one is provided
+- Show helper text explaining why payment info is needed
+
+**ReservationsList.tsx:**
+- Add "View Payment Info" button for each event
+- Open modal showing participant payment details
+- Copy-to-clipboard functionality for payment usernames
+
+**Create ParticipantPaymentModal component:**
+- Display list of participants with their payment info
+- Show Venmo usernames with "@" prefix
+- Show Zelle identifiers (email/phone)
+- Option to copy all to clipboard
+
+**SlotsManager.tsx:**
+- Add "Edit" button next to each slot
+- Open edit modal with current values pre-filled
+
+**Create EditSlotModal component:**
+- Form to edit: name, description, date, time, end_time, waitlist_enabled
+- Validation (end time after start time, date not in past)
+- Submit calls update mutation
+
+### 5. Create Update Mutation
+
+**Add to useAvailabilitySlots.ts:**
 
 ```typescript
-// supabase/functions/notify-waitlist-promotion/index.ts
-// Sends email notification when user is promoted from waitlist
-// Uses Resend API for email delivery
-// Future: Can add Twilio for SMS or WhatsApp
+export function useUpdateAvailabilitySlot() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ 
+      slotId, 
+      updates 
+    }: { 
+      slotId: string; 
+      updates: Partial<AvailabilitySlot> 
+    }) => {
+      const { data, error } = await supabase
+        .from('availability_slots')
+        .update(updates)
+        .eq('id', slotId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['availability-slots'] });
+      queryClient.invalidateQueries({ queryKey: ['user-owned-slots'] });
+      queryClient.invalidateQueries({ queryKey: ['month-availability'] });
+    },
+  });
+}
 ```
 
-### Files to Create/Modify
+---
 
-| File | Changes |
-|------|---------|
-| `src/lib/types.ts` | Add `waitlist_enabled` to AvailabilitySlot, add WaitlistEntry type |
-| `src/components/admin/AvailabilityManager.tsx` | Add waitlist toggle switch |
-| `src/components/customer/MyReservations.tsx` | Add cancel button and confirmation dialog |
-| `src/components/customer/BookingModal.tsx` | Add "Join Waitlist" flow when slot is full |
-| `src/components/customer/SlotChip.tsx` | Update UI for waitlist-enabled full slots |
-| `src/hooks/useAvailabilitySlots.ts` | Add `waitlist_enabled` to slot creation |
-| `src/hooks/useUserBookings.ts` | Add cancellation mutation |
-| `src/hooks/useWaitlist.ts` (new) | Waitlist join/leave/query hooks |
-| `supabase/functions/notify-waitlist-promotion/index.ts` (new) | Notification edge function |
+## Files to Create/Modify
+
+| File | Action | Description |
+|------|--------|-------------|
+| `src/pages/Auth.tsx` | Modify | Add Venmo/Zelle fields to signup form |
+| `src/contexts/AuthContext.tsx` | Modify | Update signUp to create profile |
+| `src/hooks/useUserProfile.ts` | Create | Profile query and mutations |
+| `src/hooks/useParticipantPaymentInfo.ts` | Create | RPC hook for hosts |
+| `src/hooks/useAvailabilitySlots.ts` | Modify | Add update mutation |
+| `src/components/admin/ReservationsList.tsx` | Modify | Add payment info button |
+| `src/components/admin/ParticipantPaymentModal.tsx` | Create | Display payment info |
+| `src/components/admin/SlotsManager.tsx` | Modify | Add edit button |
+| `src/components/admin/EditSlotModal.tsx` | Create | Edit form modal |
+| `src/lib/types.ts` | Modify | Add UserProfile type |
+| Database migration | Create | user_profiles table + RPC function |
 
 ---
 
-## User Experience Flow
+## User Experience Flows
 
-### Creating an Event with Waitlist
-1. User fills out event details
-2. User toggles "Enable Waitlist" switch
-3. Event is created with `waitlist_enabled: true`
+### Signup with Payment Info
+1. User clicks "Sign Up" tab
+2. Enters email and password
+3. Enters Venmo username OR Zelle identifier (or both)
+4. Clicks "Create Account"
+5. Account and profile created together
 
-### Customer Joining Waitlist
-1. Customer selects a sold-out slot that has waitlist enabled
-2. Sees "Join Waitlist" button instead of "Sold Out"
-3. Fills out name/email/party size
-4. Receives confirmation they're on the waitlist with their position
+### Host Viewing Payment Info
+1. Host goes to Admin Dashboard
+2. Sees list of reservations for their events
+3. Clicks "View Payment Info" on a reservation group
+4. Modal shows all participants with their Venmo/Zelle usernames
+5. Host can copy individual usernames or export list
 
-### Customer Cancelling Reservation
-1. Customer goes to "My Reservations"
-2. Clicks "Cancel" on an upcoming reservation
-3. Sees confirmation dialog: "Are you sure you want to cancel?"
-4. Confirms cancellation
-5. Booking is removed, next waitlist person is promoted and notified
-
-### Waitlist Promotion
-1. When a booking is cancelled for a waitlist-enabled slot
-2. System automatically promotes the first waitlist entry to confirmed
-3. Sends email notification to the promoted customer
-4. Other waitlist entries move up in position
-
----
-
-## Notification Options
-
-For the initial implementation, email notifications will be sent via Resend. The database stores `customer_phone` for future SMS/WhatsApp integration.
-
-**Email notification includes:**
-- Event name and details
-- Confirmation that they've been promoted from the waitlist
-- Date, time, and party size
-- Link to view their reservation
-
-**Future enhancements:**
-- SMS notifications via Twilio
-- WhatsApp notifications via Twilio WhatsApp API
-- User preference for notification channel
+### Host Editing Event
+1. Host goes to Admin Dashboard > Your Upcoming Slots
+2. Clicks "Edit" button on a slot
+3. Modal opens with current values pre-filled
+4. Host modifies desired fields
+5. Clicks "Save Changes"
+6. Event updated, existing bookings preserved
 
 ---
 
 ## Security Considerations
 
-- RLS ensures users can only cancel their own bookings
-- `is_slot_owner()` function protects slot owner operations
-- Waitlist entries are scoped to authenticated users
-- Edge function validates requests and uses service role for promotions
-- All database functions use `SECURITY DEFINER` with explicit `search_path`
+1. **Payment info isolation**: User profiles table is completely separate; users can only see their own data
+2. **Host-only access**: The RPC function enforces slot ownership before returning any payment data
+3. **No direct queries**: Frontend never queries user_profiles directly for other users
+4. **Audit trail**: All RPC functions can be logged for security auditing
+5. **Input validation**: Venmo usernames validated with regex (alphanumeric + underscores)
+6. **Zelle flexibility**: Accepts email or phone format
+
+---
+
+## Validation Rules
+
+**Venmo username:**
+- Starts with alphanumeric
+- Contains only letters, numbers, underscores, hyphens
+- 5-30 characters
+- Stored without "@" prefix (added on display)
+
+**Zelle identifier:**
+- Valid email OR valid phone number format
+- Phone numbers normalized to consistent format
+
+---
+
+## Technical Details
+
+### Database Migration SQL (Complete)
+
+```sql
+-- Create user_profiles table for payment info
+CREATE TABLE public.user_profiles (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL UNIQUE,
+  display_name text,
+  venmo_username text,
+  zelle_identifier text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Index for fast lookups
+CREATE INDEX idx_user_profiles_user_id ON public.user_profiles(user_id);
+
+-- Enable RLS
+ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
+
+-- RLS: Users can only see their own profile
+CREATE POLICY "Users can view own profile"
+ON public.user_profiles FOR SELECT
+TO authenticated
+USING (auth.uid() = user_id);
+
+-- RLS: Users can create their own profile
+CREATE POLICY "Users can insert own profile"
+ON public.user_profiles FOR INSERT
+TO authenticated
+WITH CHECK (auth.uid() = user_id);
+
+-- RLS: Users can update their own profile
+CREATE POLICY "Users can update own profile"
+ON public.user_profiles FOR UPDATE
+TO authenticated
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
+
+-- Secure function for hosts to get participant payment info
+CREATE OR REPLACE FUNCTION public.get_participant_payment_info(p_slot_id uuid)
+RETURNS TABLE(
+  booking_id uuid,
+  customer_name text,
+  customer_email text,
+  party_size integer,
+  venmo_username text,
+  zelle_identifier text
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  -- Authorization check: Only slot owners can access this
+  IF NOT is_slot_owner(p_slot_id) THEN
+    RAISE EXCEPTION 'Unauthorized: Only the event host can view payment info';
+  END IF;
+
+  RETURN QUERY
+  SELECT 
+    b.id as booking_id,
+    b.customer_name,
+    b.customer_email,
+    b.party_size,
+    up.venmo_username,
+    up.zelle_identifier
+  FROM public.bookings b
+  LEFT JOIN public.user_profiles up ON b.user_id = up.user_id
+  WHERE b.slot_id = p_slot_id
+    AND b.status = 'confirmed';
+END;
+$$;
+
+-- Function to update profile timestamp
+CREATE OR REPLACE FUNCTION public.handle_profile_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger to auto-update updated_at
+CREATE TRIGGER set_profile_updated_at
+  BEFORE UPDATE ON public.user_profiles
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_profile_updated_at();
+```
+
+### API Integrations Note
+
+Since Venmo and Zelle don't provide public APIs for sending payment requests, the implementation provides the host with a list of participant payment usernames that they can use to manually send requests through the respective apps. This is the standard approach used by similar platforms.
