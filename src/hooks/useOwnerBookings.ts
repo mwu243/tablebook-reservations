@@ -39,7 +39,8 @@ export function useOwnerBookings() {
             description,
             booking_mode,
             created_at,
-            user_id
+            user_id,
+            waitlist_enabled
           )
         `)
         .in('slot_id', slotIds)
@@ -91,7 +92,8 @@ export function useOwnerLotteryBookings() {
             description,
             booking_mode,
             created_at,
-            user_id
+            user_id,
+            waitlist_enabled
           )
         `)
         .in('slot_id', slotIds)

@@ -19,6 +19,7 @@ interface SlotsPanelProps {
   mealTime: MealTime;
   onMealTimeChange: (time: MealTime) => void;
   onSlotClick: (slot: AvailabilitySlot) => void;
+  onWaitlistClick?: (slot: AvailabilitySlot) => void;
 }
 
 export function SlotsPanel({
@@ -30,6 +31,7 @@ export function SlotsPanel({
   mealTime,
   onMealTimeChange,
   onSlotClick,
+  onWaitlistClick,
 }: SlotsPanelProps) {
   const availableSlots = slots?.filter(s => s.booked_tables < s.total_tables) || [];
 
@@ -93,7 +95,7 @@ export function SlotsPanel({
           <Loader2 className="h-5 w-5 animate-spin" />
           <span>Loading times...</span>
         </div>
-      ) : availableSlots.length === 0 ? (
+      ) : !slots || slots.length === 0 ? (
         <div className="py-8 text-center text-muted-foreground">
           <p>No times available for this filter.</p>
           <p className="mt-1 text-sm">Try selecting "All Times".</p>
@@ -102,9 +104,10 @@ export function SlotsPanel({
         <>
           <p className="mb-4 text-sm text-muted-foreground">
             {availableSlots.length} time {availableSlots.length === 1 ? 'slot' : 'slots'} available
+            {slots.length > availableSlots.length && ` (${slots.length - availableSlots.length} full)`}
           </p>
           <div className="flex flex-wrap gap-3">
-            {slots?.map((slot) => {
+            {slots.map((slot) => {
               const isAvailable = slot.booked_tables < slot.total_tables;
               return (
                 <SlotChip
@@ -112,6 +115,7 @@ export function SlotsPanel({
                   slot={slot}
                   isAvailable={isAvailable}
                   onClick={() => onSlotClick(slot)}
+                  onWaitlistClick={onWaitlistClick ? () => onWaitlistClick(slot) : undefined}
                 />
               );
             })}

@@ -27,6 +27,7 @@ export type Database = {
           time: string
           total_tables: number
           user_id: string | null
+          waitlist_enabled: boolean
         }
         Insert: {
           booked_tables?: number
@@ -40,6 +41,7 @@ export type Database = {
           time: string
           total_tables?: number
           user_id?: string | null
+          waitlist_enabled?: boolean
         }
         Update: {
           booked_tables?: number
@@ -53,6 +55,7 @@ export type Database = {
           time?: string
           total_tables?: number
           user_id?: string | null
+          waitlist_enabled?: boolean
         }
         Relationships: []
       }
@@ -118,6 +121,53 @@ export type Database = {
         }
         Relationships: []
       }
+      waitlist_entries: {
+        Row: {
+          created_at: string
+          customer_email: string
+          customer_name: string
+          customer_phone: string | null
+          id: string
+          notified_at: string | null
+          party_size: number
+          position: number
+          slot_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          customer_email: string
+          customer_name: string
+          customer_phone?: string | null
+          id?: string
+          notified_at?: string | null
+          party_size: number
+          position: number
+          slot_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          customer_email?: string
+          customer_name?: string
+          customer_phone?: string | null
+          id?: string
+          notified_at?: string | null
+          party_size?: number
+          position?: number
+          slot_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "waitlist_entries_slot_id_fkey"
+            columns: ["slot_id"]
+            isOneToOne: false
+            referencedRelation: "availability_slots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -130,6 +180,10 @@ export type Database = {
       admin_update_bookings_status: {
         Args: { booking_ids: string[]; new_status: string }
         Returns: undefined
+      }
+      cancel_booking_with_waitlist: {
+        Args: { p_booking_id: string }
+        Returns: Json
       }
       get_admin_bookings: {
         Args: never
@@ -151,6 +205,10 @@ export type Database = {
           user_id: string
         }[]
       }
+      get_next_waitlist_position: {
+        Args: { p_slot_id: string }
+        Returns: number
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -161,6 +219,17 @@ export type Database = {
       increment_booked_tables: { Args: { slot_id: string }; Returns: undefined }
       is_admin: { Args: never; Returns: boolean }
       is_slot_owner: { Args: { _slot_id: string }; Returns: boolean }
+      promote_waitlist_entry: {
+        Args: { p_slot_id: string }
+        Returns: {
+          entry_id: string
+          promoted_customer_email: string
+          promoted_customer_name: string
+          promoted_customer_phone: string
+          promoted_party_size: number
+          promoted_user_id: string
+        }[]
+      }
     }
     Enums: {
       app_role: "admin" | "moderator" | "user"

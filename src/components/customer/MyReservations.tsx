@@ -1,11 +1,36 @@
+import { useState } from 'react';
 import { format } from 'date-fns';
-import { CalendarCheck, Loader2, Ticket, Shuffle, Clock } from 'lucide-react';
+import { CalendarCheck, Loader2, Ticket, Shuffle, Clock, X } from 'lucide-react';
 import { useUserBookings } from '@/hooks/useUserBookings';
+import { useCancelBooking, useUserWaitlistEntries, useLeaveWaitlist } from '@/hooks/useWaitlist';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { toast } from '@/hooks/use-toast';
 
 export function MyReservations() {
-  const { data: bookings, isLoading } = useUserBookings();
+  const { data: bookings, isLoading: bookingsLoading } = useUserBookings();
+  const { data: waitlistEntries, isLoading: waitlistLoading } = useUserWaitlistEntries();
+  const cancelBooking = useCancelBooking();
+  const leaveWaitlist = useLeaveWaitlist();
+  
+  const [cancelDialog, setCancelDialog] = useState<{ open: boolean; bookingId: string | null; type: 'booking' | 'waitlist' }>({
+    open: false,
+    bookingId: null,
+    type: 'booking',
+  });
+
+  const isLoading = bookingsLoading || waitlistLoading;
 
   const formatTime = (time: string) => {
     const [hours, minutes] = time.split(':');
@@ -32,6 +57,34 @@ export function MyReservations() {
     }
   };
 
+  const handleCancelBooking = async () => {
+    if (!cancelDialog.bookingId) return;
+
+    try {
+      if (cancelDialog.type === 'booking') {
+        await cancelBooking.mutateAsync(cancelDialog.bookingId);
+        toast({
+          title: 'Reservation Cancelled',
+          description: 'Your reservation has been cancelled successfully.',
+        });
+      } else {
+        await leaveWaitlist.mutateAsync(cancelDialog.bookingId);
+        toast({
+          title: 'Left Waitlist',
+          description: 'You have been removed from the waitlist.',
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to cancel. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setCancelDialog({ open: false, bookingId: null, type: 'booking' });
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -40,7 +93,9 @@ export function MyReservations() {
     );
   }
 
-  if (!bookings || bookings.length === 0) {
+  const hasNoData = (!bookings || bookings.length === 0) && (!waitlistEntries || waitlistEntries.length === 0);
+
+  if (hasNoData) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
         <CalendarCheck className="h-12 w-12 text-muted-foreground/50" />
@@ -54,15 +109,21 @@ export function MyReservations() {
 
   // Separate upcoming and past reservations
   const today = new Date().toISOString().split('T')[0];
-  const upcomingBookings = bookings.filter(
-    b => b.availability_slots && b.availability_slots.date >= today
-  );
-  const pastBookings = bookings.filter(
+  const upcomingBookings = bookings?.filter(
+    b => b.availability_slots && b.availability_slots.date >= today && b.status !== 'cancelled'
+  ) || [];
+  const pastBookings = bookings?.filter(
     b => b.availability_slots && b.availability_slots.date < today
-  );
+  ) || [];
+
+  // Filter upcoming waitlist entries
+  const upcomingWaitlist = waitlistEntries?.filter(
+    w => w.availability_slots && w.availability_slots.date >= today
+  ) || [];
 
   return (
     <div className="space-y-6">
+      {/* Upcoming Reservations */}
       {upcomingBookings.length > 0 && (
         <div>
           <h3 className="mb-4 text-lg font-semibold">Upcoming</h3>
@@ -106,6 +167,19 @@ export function MyReservations() {
                       Party of {booking.party_size}
                     </span>
                   </div>
+                  
+                  {/* Cancel Button - Only for confirmed or pending bookings */}
+                  {(booking.status === 'confirmed' || booking.status === 'pending_lottery') && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-3 w-full text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                      onClick={() => setCancelDialog({ open: true, bookingId: booking.id, type: 'booking' })}
+                    >
+                      <X className="mr-1.5 h-4 w-4" />
+                      Cancel Reservation
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             ))}
@@ -113,6 +187,63 @@ export function MyReservations() {
         </div>
       )}
 
+      {/* Waitlist Entries */}
+      {upcomingWaitlist.length > 0 && (
+        <div>
+          <h3 className="mb-4 text-lg font-semibold">Waitlist</h3>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {upcomingWaitlist.map((entry) => (
+              <Card key={entry.id} className="overflow-hidden border-amber-200 bg-amber-50/50">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <CardTitle className="text-base">
+                      {entry.availability_slots?.name || 'Event'}
+                    </CardTitle>
+                    <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">
+                      #{entry.position} on waitlist
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <CalendarCheck className="h-4 w-4" />
+                    {entry.availability_slots && (
+                      <span>
+                        {format(new Date(entry.availability_slots.date), 'EEEE, MMMM d, yyyy')}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Clock className="h-4 w-4" />
+                    {entry.availability_slots && (
+                      <span>
+                        {formatTime(entry.availability_slots.time)}
+                        {entry.availability_slots.end_time && 
+                          ` – ${formatTime(entry.availability_slots.end_time)}`}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    You'll be notified if a spot opens up
+                  </p>
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3 w-full"
+                    onClick={() => setCancelDialog({ open: true, bookingId: entry.id, type: 'waitlist' })}
+                  >
+                    <X className="mr-1.5 h-4 w-4" />
+                    Leave Waitlist
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Past Reservations */}
       {pastBookings.length > 0 && (
         <div>
           <h3 className="mb-4 text-lg font-semibold text-muted-foreground">Past</h3>
@@ -148,6 +279,39 @@ export function MyReservations() {
           </div>
         </div>
       )}
+
+      {/* Cancel Confirmation Dialog */}
+      <AlertDialog open={cancelDialog.open} onOpenChange={(open) => setCancelDialog({ ...cancelDialog, open })}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {cancelDialog.type === 'booking' ? 'Cancel Reservation?' : 'Leave Waitlist?'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {cancelDialog.type === 'booking' 
+                ? 'Are you sure you want to cancel this reservation? This action cannot be undone.'
+                : 'Are you sure you want to leave the waitlist? You will lose your spot.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep it</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleCancelBooking}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={cancelBooking.isPending || leaveWaitlist.isPending}
+            >
+              {(cancelBooking.isPending || leaveWaitlist.isPending) ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Cancelling...
+                </>
+              ) : (
+                cancelDialog.type === 'booking' ? 'Yes, cancel reservation' : 'Yes, leave waitlist'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

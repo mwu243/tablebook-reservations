@@ -20,6 +20,7 @@ export function CustomerView() {
   const [partySize, setPartySize] = useState(2);
   const [mealTime, setMealTime] = useState<MealTime>('all');
   const [selectedSlot, setSelectedSlot] = useState<AvailabilitySlot | null>(null);
+  const [isWaitlistMode, setIsWaitlistMode] = useState(false);
   const [activeTab, setActiveTab] = useState('book');
 
   const { data: slots, isLoading } = useAvailabilitySlots(date, mealTime);
@@ -74,7 +75,14 @@ export function CustomerView() {
                       onPartySizeChange={setPartySize}
                       mealTime={mealTime}
                       onMealTimeChange={setMealTime}
-                      onSlotClick={setSelectedSlot}
+                      onSlotClick={(slot) => {
+                        setIsWaitlistMode(false);
+                        setSelectedSlot(slot);
+                      }}
+                      onWaitlistClick={(slot) => {
+                        setIsWaitlistMode(true);
+                        setSelectedSlot(slot);
+                      }}
                     />
                   ) : (
                     <div className="flex h-full min-h-[400px] flex-col items-center justify-center rounded-xl border bg-card p-6 text-center shadow-sm">
@@ -127,7 +135,14 @@ export function CustomerView() {
                     onPartySizeChange={setPartySize}
                     mealTime={mealTime}
                     onMealTimeChange={setMealTime}
-                    onSlotClick={setSelectedSlot}
+                    onSlotClick={(slot) => {
+                      setIsWaitlistMode(false);
+                      setSelectedSlot(slot);
+                    }}
+                    onWaitlistClick={(slot) => {
+                      setIsWaitlistMode(true);
+                      setSelectedSlot(slot);
+                    }}
                   />
                 ) : (
                   <div className="flex h-full min-h-[400px] flex-col items-center justify-center rounded-xl border bg-card p-6 text-center shadow-sm">
@@ -147,7 +162,11 @@ export function CustomerView() {
       <BookingModal
         slot={selectedSlot}
         partySize={partySize}
-        onClose={() => setSelectedSlot(null)}
+        onClose={() => {
+          setSelectedSlot(null);
+          setIsWaitlistMode(false);
+        }}
+        isWaitlist={isWaitlistMode}
       />
     </div>
   );

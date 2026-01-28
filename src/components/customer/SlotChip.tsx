@@ -1,4 +1,4 @@
-import { Shuffle, Ticket } from 'lucide-react';
+import { Shuffle, Ticket, Users } from 'lucide-react';
 import { AvailabilitySlot } from '@/lib/types';
 import {
   Tooltip,
@@ -12,9 +12,10 @@ interface SlotChipProps {
   slot: AvailabilitySlot;
   isAvailable: boolean;
   onClick: () => void;
+  onWaitlistClick?: () => void;
 }
 
-export function SlotChip({ slot, isAvailable, onClick }: SlotChipProps) {
+export function SlotChip({ slot, isAvailable, onClick, onWaitlistClick }: SlotChipProps) {
   const formatTime = (time: string) => {
     const [hours, minutes] = time.split(':');
     const hour = parseInt(hours);
@@ -25,21 +26,34 @@ export function SlotChip({ slot, isAvailable, onClick }: SlotChipProps) {
 
   const isLottery = slot.booking_mode === 'lottery';
   const remainingTables = slot.total_tables - slot.booked_tables;
-  // Lottery slots are always clickable; FCFS only if available
-  const canClick = isLottery || isAvailable;
+  const isFull = remainingTables <= 0;
+  const hasWaitlist = slot.waitlist_enabled && isFull && !isLottery;
+  
+  // Lottery slots are always clickable; FCFS only if available or has waitlist
+  const canClick = isLottery || isAvailable || hasWaitlist;
+
+  const handleClick = () => {
+    if (hasWaitlist && onWaitlistClick) {
+      onWaitlistClick();
+    } else if (canClick) {
+      onClick();
+    }
+  };
 
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
           <button
-            onClick={canClick ? onClick : undefined}
+            onClick={handleClick}
             disabled={!canClick}
             className={cn(
               'group flex min-w-[100px] flex-col items-center gap-1 rounded-lg border px-4 py-3 text-sm transition-all',
-              canClick
-                ? 'cursor-pointer border-accent/30 bg-accent/5 hover:border-accent hover:bg-accent/10'
-                : 'cursor-not-allowed border-muted bg-muted/50 text-muted-foreground opacity-60'
+              hasWaitlist
+                ? 'cursor-pointer border-amber-300 bg-amber-50 hover:border-amber-400 hover:bg-amber-100'
+                : canClick
+                  ? 'cursor-pointer border-accent/30 bg-accent/5 hover:border-accent hover:bg-accent/10'
+                  : 'cursor-not-allowed border-muted bg-muted/50 text-muted-foreground opacity-60'
             )}
           >
             <span className="font-semibold">
@@ -56,6 +70,15 @@ export function SlotChip({ slot, isAvailable, onClick }: SlotChipProps) {
                 <span className="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
                   <Shuffle className="h-2.5 w-2.5" />
                   Lottery
+                </span>
+              ) : hasWaitlist ? (
+                <span className="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+                  <Users className="h-2.5 w-2.5" />
+                  Join Waitlist
+                </span>
+              ) : isFull ? (
+                <span className="flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600">
+                  Sold Out
                 </span>
               ) : (
                 <span className="flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-800">
@@ -74,7 +97,11 @@ export function SlotChip({ slot, isAvailable, onClick }: SlotChipProps) {
           <p className="mt-1 text-xs">
             {isLottery 
               ? 'Enter for a chance to be selected' 
-              : `${remainingTables} of ${slot.total_tables} tables available`
+              : hasWaitlist
+                ? 'Currently full – join the waitlist to be notified if a spot opens'
+                : isFull
+                  ? 'No spots available'
+                  : `${remainingTables} of ${slot.total_tables} tables available`
             }
           </p>
         </TooltipContent>

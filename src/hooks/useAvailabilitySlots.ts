@@ -39,6 +39,7 @@ interface CreateSlotInput {
   description: string | null;
   booking_mode: BookingMode;
   user_id: string;
+  waitlist_enabled?: boolean;
 }
 
 export function useCreateAvailabilitySlots() {
@@ -49,7 +50,11 @@ export function useCreateAvailabilitySlots() {
       const { data, error } = await supabase
         .from('availability_slots')
         .insert(
-          slots.map(slot => ({ ...slot, booked_tables: 0 }))
+          slots.map(slot => ({ 
+            ...slot, 
+            booked_tables: 0,
+            waitlist_enabled: slot.waitlist_enabled ?? false,
+          }))
         )
         .select();
 
