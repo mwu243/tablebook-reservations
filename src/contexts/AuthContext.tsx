@@ -91,12 +91,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = async (email: string, password: string, paymentInfo?: PaymentInfo) => {
     const redirectUrl = `${window.location.origin}/`;
+
+    const signUpOptions: { emailRedirectTo: string; data?: Record<string, unknown> } = {
+      emailRedirectTo: redirectUrl,
+    };
+
+    if (paymentInfo?.displayName) {
+      // Store name in account metadata so we can always auto-fill even if profile creation is delayed.
+      signUpOptions.data = { display_name: paymentInfo.displayName };
+    }
     
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo: redirectUrl,
+        ...signUpOptions,
       },
     });
     
