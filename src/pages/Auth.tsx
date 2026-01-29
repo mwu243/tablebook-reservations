@@ -160,9 +160,19 @@ export default function Auth() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4">
-      <div className="flex items-center gap-2 mb-8">
+      <div className="flex items-center gap-2 mb-4">
         <UtensilsCrossed className="h-8 w-8 text-accent" />
-        <span className="text-2xl font-semibold tracking-tight">TableBook</span>
+        <span className="text-2xl font-semibold tracking-tight">Kellogg MMM SGD</span>
+      </div>
+
+      {/* Clear call-to-action message */}
+      <div className="text-center mb-6 max-w-md">
+        <h1 className="text-xl font-semibold text-foreground mb-2">
+          Sign in to reserve your spot
+        </h1>
+        <p className="text-muted-foreground text-sm">
+          You must sign in or create an account before booking a small group dinner. This helps us track attendance and manage payments.
+        </p>
       </div>
 
       <Card className="w-full max-w-md">
@@ -176,7 +186,7 @@ export default function Auth() {
             <form onSubmit={handleSignIn}>
               <CardHeader>
                 <CardTitle>Welcome back</CardTitle>
-                <CardDescription>Sign in to access your account</CardDescription>
+                <CardDescription>Sign in to access your account and reservations</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 {error && (
