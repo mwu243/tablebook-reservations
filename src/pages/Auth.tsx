@@ -16,6 +16,7 @@ const signInSchema = z.object({
 });
 
 const signUpSchema = z.object({
+  fullName: z.string().min(2, 'Please enter your full name'),
   email: z.string().email('Please enter a valid email address'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
   venmoUsername: z.string().optional(),
@@ -35,6 +36,7 @@ export default function Auth() {
   const navigate = useNavigate();
   const { user, isLoading: authLoading, signIn, signUp } = useAuth();
   
+  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [venmoUsername, setVenmoUsername] = useState('');
@@ -42,6 +44,7 @@ export default function Auth() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<{ 
+    fullName?: string;
     email?: string; 
     password?: string;
     venmoUsername?: string;
@@ -79,10 +82,11 @@ export default function Auth() {
     
     // Basic validation
     try {
-      signUpSchema.parse({ email, password, venmoUsername, zelleIdentifier });
+      signUpSchema.parse({ fullName, email, password, venmoUsername, zelleIdentifier });
     } catch (err) {
       if (err instanceof z.ZodError) {
         err.errors.forEach((e) => {
+          if (e.path[0] === 'fullName') errors.fullName = e.message;
           if (e.path[0] === 'email') errors.email = e.message;
           if (e.path[0] === 'password') errors.password = e.message;
           if (e.path[0] === 'payment') errors.payment = e.message;
@@ -131,6 +135,7 @@ export default function Auth() {
     
     setIsLoading(true);
     const { error } = await signUp(email, password, {
+      displayName: fullName.trim(),
       venmoUsername: venmoUsername || undefined,
       zelleIdentifier: zelleIdentifier || undefined,
     });
@@ -258,6 +263,23 @@ export default function Auth() {
                     <AlertDescription>{error}</AlertDescription>
                   </Alert>
                 )}
+                <div className="space-y-2">
+                  <Label htmlFor="signup-fullname">Full Name</Label>
+                  <Input
+                    id="signup-fullname"
+                    type="text"
+                    placeholder="Enter your full name"
+                    value={fullName}
+                    onChange={(e) => {
+                      setFullName(e.target.value);
+                      clearFormErrors();
+                    }}
+                    className={validationErrors.fullName ? 'border-destructive' : ''}
+                  />
+                  {validationErrors.fullName && (
+                    <p className="text-sm text-destructive">{validationErrors.fullName}</p>
+                  )}
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor="signup-email">Email</Label>
                   <Input

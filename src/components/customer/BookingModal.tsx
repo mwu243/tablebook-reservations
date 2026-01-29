@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, Shuffle, Ticket, PartyPopper, Users, AlertCircle, LogIn } from 'lucide-react';
+import { Loader2, Shuffle, Ticket, PartyPopper, Users, AlertCircle, LogIn, Pencil, User, Mail } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -26,6 +26,7 @@ import { useBookSlot } from '@/hooks/useAvailabilitySlots';
 import { useJoinWaitlist } from '@/hooks/useWaitlist';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserSlotBooking } from '@/hooks/useUserSlotBooking';
+import { useUserProfile } from '@/hooks/useUserProfile';
 
 interface BookingModalProps {
   slot: AvailabilitySlot | null;
@@ -37,9 +38,11 @@ interface BookingModalProps {
 export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: BookingModalProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { data: userProfile, isLoading: profileLoading } = useUserProfile();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
   const [successDialog, setSuccessDialog] = useState<{ open: boolean; type: 'booking' | 'lottery' | 'waitlist' }>({
     open: false,
     type: 'booking',
@@ -49,13 +52,17 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
   const { data: existingBooking, isLoading: checkingBooking } = useUserSlotBooking(slot?.id ?? null);
   
   const hasExistingBooking = !!existingBooking;
+  const hasCompleteProfile = !!userProfile?.display_name;
 
-  // Pre-fill email from authenticated user
+  // Pre-fill from user profile and auth
   useEffect(() => {
     if (user?.email && !email) {
       setEmail(user.email);
     }
-  }, [user, email]);
+    if (userProfile?.display_name && !name) {
+      setName(userProfile.display_name);
+    }
+  }, [user, userProfile, email, name]);
 
   const formatTime = (time: string) => {
     const [hours, minutes] = time.split(':');
@@ -108,13 +115,47 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
     }
   };
 
+  const handleOneClickBook = async () => {
+    if (!slot || !name.trim() || !email.trim() || !user || hasExistingBooking) return;
+
+    try {
+      if (isWaitlist) {
+        await joinWaitlist.mutateAsync({
+          slotId: slot.id,
+          customerName: name.trim(),
+          customerEmail: email.trim(),
+          customerPhone: phone.trim() || undefined,
+          partySize,
+          userId: user.id,
+        });
+        
+        onClose();
+        setSuccessDialog({ open: true, type: 'waitlist' });
+      } else {
+        await bookSlot.mutateAsync({
+          slotId: slot.id,
+          customerName: name.trim(),
+          customerEmail: email.trim(),
+          partySize,
+          userId: user.id,
+          isLottery,
+        });
+        
+        onClose();
+        setSuccessDialog({ open: true, type: isLottery ? 'lottery' : 'booking' });
+      }
+    } catch (error) {
+      console.error('Booking failed:', error);
+    }
+  };
+
   const handleCloseSuccessDialog = () => {
     setSuccessDialog({ open: false, type: 'booking' });
   };
 
   if (!slot) return null;
 
-  const isPending = bookSlot.isPending || joinWaitlist.isPending || checkingBooking;
+  const isPending = bookSlot.isPending || joinWaitlist.isPending || checkingBooking || profileLoading;
 
   // Show sign-in prompt if user is not authenticated
   if (!user) {
@@ -170,6 +211,9 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
       </Dialog>
     );
   }
+
+  // One-click booking view for users with complete profile
+  const showOneClickView = hasCompleteProfile && !isEditing && !hasExistingBooking;
 
   return (
     <>
@@ -235,78 +279,173 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
             </p>
           ) : null}
 
-          <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Full Name</Label>
-              <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="John Smith"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email Address</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="john@example.com"
-                required
-              />
-            </div>
-            {isWaitlist && (
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone Number (Optional)</Label>
-                <Input
-                  id="phone"
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+1 (555) 123-4567"
-                />
-                <p className="text-xs text-muted-foreground">
-                  For text notifications when a spot opens up
-                </p>
+          {showOneClickView ? (
+            // One-click confirmation view
+            <div className="mt-4 space-y-4">
+              <div className="rounded-lg border border-border p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-muted-foreground">Booking as</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 text-xs"
+                    onClick={() => setIsEditing(true)}
+                  >
+                    <Pencil className="mr-1 h-3 w-3" />
+                    Edit
+                  </Button>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent/10">
+                    <User className="h-5 w-5 text-accent" />
+                  </div>
+                  <div>
+                    <p className="font-medium">{name}</p>
+                    <p className="text-sm text-muted-foreground">{email}</p>
+                  </div>
+                </div>
               </div>
-            )}
-            <div className="flex gap-3 pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="flex-1"
-                onClick={onClose}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                className="flex-1 bg-accent hover:bg-accent/90"
-                disabled={isPending || hasExistingBooking}
-              >
-                {isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {isWaitlist ? 'Joining...' : isLottery ? 'Entering...' : 'Booking...'}
-                  </>
-                ) : isWaitlist ? (
-                  <>
-                    <Users className="mr-2 h-4 w-4" />
-                    Join Waitlist
-                  </>
-                ) : isLottery ? (
-                  <>
-                    <Shuffle className="mr-2 h-4 w-4" />
-                    Enter Lottery
-                  </>
-                ) : (
-                  'Confirm Booking'
-                )}
-              </Button>
+
+              {isWaitlist && (
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone Number (Optional)</Label>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="+1 (555) 123-4567"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    For text notifications when a spot opens up
+                  </p>
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={onClose}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="flex-1 bg-accent hover:bg-accent/90"
+                  disabled={isPending}
+                  onClick={handleOneClickBook}
+                >
+                  {isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      {isWaitlist ? 'Joining...' : isLottery ? 'Entering...' : 'Booking...'}
+                    </>
+                  ) : isWaitlist ? (
+                    <>
+                      <Users className="mr-2 h-4 w-4" />
+                      Join Waitlist
+                    </>
+                  ) : isLottery ? (
+                    <>
+                      <Shuffle className="mr-2 h-4 w-4" />
+                      Enter Lottery
+                    </>
+                  ) : (
+                    'Confirm Booking'
+                  )}
+                </Button>
+              </div>
             </div>
-          </form>
+          ) : (
+            // Editable form view (legacy users or when editing)
+            <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Full Name</Label>
+                <Input
+                  id="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="John Smith"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="email">Email Address</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="john@example.com"
+                  required
+                />
+              </div>
+              {isWaitlist && (
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone Number (Optional)</Label>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="+1 (555) 123-4567"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    For text notifications when a spot opens up
+                  </p>
+                </div>
+              )}
+              <div className="flex gap-3 pt-2">
+                {isEditing && hasCompleteProfile && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setIsEditing(false);
+                      // Reset to profile values
+                      if (userProfile?.display_name) setName(userProfile.display_name);
+                      if (user?.email) setEmail(user.email);
+                    }}
+                  >
+                    Cancel Edit
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={onClose}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="flex-1 bg-accent hover:bg-accent/90"
+                  disabled={isPending || hasExistingBooking}
+                >
+                  {isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      {isWaitlist ? 'Joining...' : isLottery ? 'Entering...' : 'Booking...'}
+                    </>
+                  ) : isWaitlist ? (
+                    <>
+                      <Users className="mr-2 h-4 w-4" />
+                      Join Waitlist
+                    </>
+                  ) : isLottery ? (
+                    <>
+                      <Shuffle className="mr-2 h-4 w-4" />
+                      Enter Lottery
+                    </>
+                  ) : (
+                    'Confirm Booking'
+                  )}
+                </Button>
+              </div>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
 
