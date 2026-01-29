@@ -54,15 +54,18 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
   const hasExistingBooking = !!existingBooking;
   const hasCompleteProfile = !!userProfile?.display_name;
 
-  // Pre-fill from user profile and auth
+  // Pre-fill from user profile and auth when modal opens
   useEffect(() => {
-    if (user?.email && !email) {
-      setEmail(user.email);
+    if (slot) {
+      // Always try to populate from profile/auth when modal opens
+      if (user?.email) {
+        setEmail(user.email);
+      }
+      if (userProfile?.display_name) {
+        setName(userProfile.display_name);
+      }
     }
-    if (userProfile?.display_name && !name) {
-      setName(userProfile.display_name);
-    }
-  }, [user, userProfile, email, name]);
+  }, [slot, user, userProfile]);
 
   const formatTime = (time: string) => {
     const [hours, minutes] = time.split(':');
@@ -171,6 +174,9 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
 
           <div className="mt-2 rounded-lg bg-muted p-4">
             <p className="font-medium">{slot.name}</p>
+            {slot.description && (
+              <p className="mt-1 text-sm text-muted-foreground">{slot.description}</p>
+            )}
             <div className="mt-2 flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Date</span>
               <span className="font-medium">{format(new Date(slot.date), 'EEEE, MMMM d, yyyy')}</span>
@@ -245,6 +251,9 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
               )}
             </div>
             <p className="font-medium">{slot.name}</p>
+            {slot.description && (
+              <p className="mt-1 text-sm text-muted-foreground">{slot.description}</p>
+            )}
             <div className="mt-2 flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Date</span>
               <span className="font-medium">{format(new Date(slot.date), 'EEEE, MMMM d, yyyy')}</span>
