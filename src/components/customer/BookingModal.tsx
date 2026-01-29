@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { Loader2, Shuffle, Ticket, PartyPopper, Users, AlertCircle, LogIn, Pencil, User, Mail } from 'lucide-react';
@@ -26,7 +26,8 @@ import { useBookSlot } from '@/hooks/useAvailabilitySlots';
 import { useJoinWaitlist } from '@/hooks/useWaitlist';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserSlotBooking } from '@/hooks/useUserSlotBooking';
-import { useUserProfile } from '@/hooks/useUserProfile';
+import { useCreateUserProfile, useUserProfile } from '@/hooks/useUserProfile';
+import { useLastCustomerName } from '@/hooks/useLastCustomerName';
 
 interface BookingModalProps {
   slot: AvailabilitySlot | null;
@@ -39,10 +40,15 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
   const navigate = useNavigate();
   const { user } = useAuth();
   const { data: userProfile, isLoading: profileLoading } = useUserProfile();
+  const createProfile = useCreateUserProfile();
+  const { data: lastCustomerName } = useLastCustomerName();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [isEditing, setIsEditing] = useState(false);
+  const [nameTouched, setNameTouched] = useState(false);
+  const [emailTouched, setEmailTouched] = useState(false);
+  const prevSlotIdRef = useRef<string | null>(null);
   const [successDialog, setSuccessDialog] = useState<{ open: boolean; type: 'booking' | 'lottery' | 'waitlist' }>({
     open: false,
     type: 'booking',
@@ -54,18 +60,58 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
   const hasExistingBooking = !!existingBooking;
   const hasCompleteProfile = !!userProfile?.display_name;
 
+  const getAuthDisplayName = () => {
+    const meta = user?.user_metadata as Record<string, unknown> | undefined;
+    const candidate =
+      (typeof meta?.display_name === 'string' ? meta.display_name : undefined) ||
+      (typeof meta?.full_name === 'string' ? meta.full_name : undefined) ||
+      (typeof meta?.name === 'string' ? meta.name : undefined);
+    return candidate?.trim() || '';
+  };
+
+  const maybePersistProfile = async (displayName: string) => {
+    if (!user || userProfile?.id) return;
+    const safeName = displayName.trim();
+    if (!safeName) return;
+
+    try {
+      await createProfile.mutateAsync({
+        user_id: user.id,
+        display_name: safeName,
+      });
+    } catch {
+      // If it already exists (race/duplicate) or policy blocks, ignore — booking still succeeded.
+    }
+  };
+
   // Pre-fill from user profile and auth when modal opens
   useEffect(() => {
     if (slot) {
+      if (prevSlotIdRef.current !== slot.id) {
+        prevSlotIdRef.current = slot.id;
+        setNameTouched(false);
+        setEmailTouched(false);
+      }
+
       // Always try to populate from profile/auth when modal opens
-      if (user?.email) {
+      if (user?.email && !emailTouched) {
         setEmail(user.email);
       }
-      if (userProfile?.display_name) {
-        setName(userProfile.display_name);
+
+      if (!nameTouched) {
+        if (userProfile?.display_name) {
+          setName(userProfile.display_name);
+        } else {
+          const metaName = getAuthDisplayName();
+          if (metaName) {
+            setName(metaName);
+          } else if (lastCustomerName) {
+            setName(lastCustomerName);
+          }
+        }
       }
     }
-  }, [slot, user, userProfile]);
+  }, [slot, user, userProfile, lastCustomerName, nameTouched, emailTouched]);
 
   const formatTime = (time: string) => {
     const [hours, minutes] = time.split(':');
@@ -106,6 +152,8 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
           userId: user.id,
           isLottery,
         });
+
+        await maybePersistProfile(name.trim());
         
         onClose();
         setName('');
@@ -143,6 +191,8 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
           userId: user.id,
           isLottery,
         });
+
+        await maybePersistProfile(name.trim());
         
         onClose();
         setSuccessDialog({ open: true, type: isLottery ? 'lottery' : 'booking' });
@@ -374,7 +424,10 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
                 <Input
                   id="name"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => {
+                    setNameTouched(true);
+                    setName(e.target.value);
+                  }}
                   placeholder="John Smith"
                   required
                 />
@@ -385,7 +438,10 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
                   id="email"
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmailTouched(true);
+                    setEmail(e.target.value);
+                  }}
                   placeholder="john@example.com"
                   required
                 />
