@@ -28,6 +28,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUserSlotBooking } from '@/hooks/useUserSlotBooking';
 import { useCreateUserProfile, useUserProfile } from '@/hooks/useUserProfile';
 import { useLastCustomerName } from '@/hooks/useLastCustomerName';
+import { supabase } from '@/integrations/supabase/client';
 
 interface BookingModalProps {
   slot: AvailabilitySlot | null;
@@ -57,9 +58,6 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
   const joinWaitlist = useJoinWaitlist();
   const { data: existingBooking, isLoading: checkingBooking } = useUserSlotBooking(slot?.id ?? null);
   
-  const hasExistingBooking = !!existingBooking;
-  const hasCompleteProfile = !!userProfile?.display_name;
-
   const getAuthDisplayName = () => {
     const meta = user?.user_metadata as Record<string, unknown> | undefined;
     const candidate =
@@ -68,6 +66,11 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
       (typeof meta?.name === 'string' ? meta.name : undefined);
     return candidate?.trim() || '';
   };
+
+  const hasExistingBooking = !!existingBooking;
+  const authDisplayName = getAuthDisplayName();
+  const inferredDisplayName = userProfile?.display_name ?? authDisplayName ?? lastCustomerName ?? '';
+  const hasCompleteProfile = !!inferredDisplayName;
 
   const maybePersistProfile = async (displayName: string) => {
     if (!user || userProfile?.id) return;
@@ -81,6 +84,20 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
       });
     } catch {
       // If it already exists (race/duplicate) or policy blocks, ignore — booking still succeeded.
+    }
+  };
+
+  const maybePersistAuthMetadata = async (displayName: string) => {
+    if (!user) return;
+    const safeName = displayName.trim();
+    if (!safeName) return;
+    // Avoid extra writes if we already have it in metadata
+    if (getAuthDisplayName()) return;
+
+    try {
+      await supabase.auth.updateUser({ data: { display_name: safeName } });
+    } catch {
+      // Non-fatal; the booking should still succeed.
     }
   };
 
@@ -99,19 +116,10 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
       }
 
       if (!nameTouched) {
-        if (userProfile?.display_name) {
-          setName(userProfile.display_name);
-        } else {
-          const metaName = getAuthDisplayName();
-          if (metaName) {
-            setName(metaName);
-          } else if (lastCustomerName) {
-            setName(lastCustomerName);
-          }
-        }
+        if (inferredDisplayName) setName(inferredDisplayName);
       }
     }
-  }, [slot, user, userProfile, lastCustomerName, nameTouched, emailTouched]);
+  }, [slot, user, userProfile, lastCustomerName, inferredDisplayName, nameTouched, emailTouched]);
 
   const formatTime = (time: string) => {
     const [hours, minutes] = time.split(':');
@@ -137,6 +145,8 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
           partySize,
           userId: user.id,
         });
+
+        await Promise.all([maybePersistProfile(name.trim()), maybePersistAuthMetadata(name.trim())]);
         
         onClose();
         setName('');
@@ -153,7 +163,7 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
           isLottery,
         });
 
-        await maybePersistProfile(name.trim());
+        await Promise.all([maybePersistProfile(name.trim()), maybePersistAuthMetadata(name.trim())]);
         
         onClose();
         setName('');
@@ -179,6 +189,8 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
           partySize,
           userId: user.id,
         });
+
+        await Promise.all([maybePersistProfile(name.trim()), maybePersistAuthMetadata(name.trim())]);
         
         onClose();
         setSuccessDialog({ open: true, type: 'waitlist' });
@@ -192,7 +204,7 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
           isLottery,
         });
 
-        await maybePersistProfile(name.trim());
+        await Promise.all([maybePersistProfile(name.trim()), maybePersistAuthMetadata(name.trim())]);
         
         onClose();
         setSuccessDialog({ open: true, type: isLottery ? 'lottery' : 'booking' });
