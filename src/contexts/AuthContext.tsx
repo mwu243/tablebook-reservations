@@ -3,6 +3,7 @@ import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
 interface PaymentInfo {
+  displayName?: string;
   venmoUsername?: string;
   zelleIdentifier?: string;
 }
@@ -109,6 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .from('user_profiles')
         .insert({
           user_id: data.user.id,
+          display_name: paymentInfo.displayName || null,
           venmo_username: paymentInfo.venmoUsername || null,
           zelle_identifier: paymentInfo.zelleIdentifier || null,
         });
