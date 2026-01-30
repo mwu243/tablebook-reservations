@@ -26,6 +26,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
+  const syncProfileDisplayNameFromAuth = async (authUser: User) => {
+    try {
+      const meta = authUser.user_metadata as Record<string, unknown> | undefined;
+      const nameFromMeta =
+        (typeof meta?.display_name === 'string' ? meta.display_name : undefined) ||
+        (typeof meta?.full_name === 'string' ? meta.full_name : undefined) ||
+        (typeof meta?.name === 'string' ? meta.name : undefined);
+      const safeName = (nameFromMeta ?? '').trim();
+      if (!safeName) return;
+
+      // Ensure a profile row exists (and keep display_name in sync) so downstream UI can rely on it.
+      await supabase
+        .from('user_profiles')
+        .upsert({ user_id: authUser.id, display_name: safeName }, { onConflict: 'user_id' });
+    } catch (err) {
+      // Non-fatal: auth should still work even if profile sync fails.
+      console.error('Error syncing user profile display name:', err);
+    }
+  };
+
   const checkAdminRole = async (userId: string) => {
     try {
       const { data, error } = await supabase
@@ -60,6 +80,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (session?.user) {
           setTimeout(() => {
             checkAdminRole(session.user.id);
+            // Defer profile sync to avoid blocking auth state updates.
+            syncProfileDisplayNameFromAuth(session.user);
           }, 0);
         } else {
           setIsAdmin(false);
@@ -75,6 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (session?.user) {
         checkAdminRole(session.user.id);
+        syncProfileDisplayNameFromAuth(session.user);
       }
     });
 
@@ -97,8 +120,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     if (paymentInfo?.displayName) {
-      // Store name in account metadata so we can always auto-fill even if profile creation is delayed.
-      signUpOptions.data = { display_name: paymentInfo.displayName };
+      const safeName = paymentInfo.displayName.trim();
+      // Store name in account metadata so booking can auto-fill even if profile creation is delayed.
+      // Use multiple keys for compatibility across different clients/fields.
+      signUpOptions.data = { display_name: safeName, full_name: safeName, name: safeName };
     }
     
     const { data, error } = await supabase.auth.signUp({
@@ -113,8 +138,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error: error as Error | null };
     }
 
-    // Create user profile with payment info if signup succeeded and we have a user
-    if (data.user && paymentInfo) {
+    // Create user profile only if we have an authenticated session (RLS requires auth.uid()).
+    if (data.user && data.session && paymentInfo) {
       const { error: profileError } = await supabase
         .from('user_profiles')
         .insert({

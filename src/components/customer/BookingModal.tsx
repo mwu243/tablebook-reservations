@@ -28,6 +28,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUserSlotBooking } from '@/hooks/useUserSlotBooking';
 import { useCreateUserProfile, useUserProfile } from '@/hooks/useUserProfile';
 import { useLastCustomerName } from '@/hooks/useLastCustomerName';
+import { useAuthUser } from '@/hooks/useAuthUser';
 import { supabase } from '@/integrations/supabase/client';
 
 interface BookingModalProps {
@@ -40,6 +41,8 @@ interface BookingModalProps {
 export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: BookingModalProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { data: authUser } = useAuthUser();
+  const effectiveUser = authUser ?? user;
   const { data: userProfile, isLoading: profileLoading } = useUserProfile();
   const createProfile = useCreateUserProfile();
   const { data: lastCustomerName } = useLastCustomerName();
@@ -59,10 +62,11 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
   const { data: existingBooking, isLoading: checkingBooking } = useUserSlotBooking(slot?.id ?? null);
   
   const getAuthDisplayName = () => {
-    const meta = user?.user_metadata as Record<string, unknown> | undefined;
+    const meta = effectiveUser?.user_metadata as Record<string, unknown> | undefined;
     const candidate =
       (typeof meta?.display_name === 'string' ? meta.display_name : undefined) ||
       (typeof meta?.full_name === 'string' ? meta.full_name : undefined) ||
+      (typeof (meta as any)?.fullName === 'string' ? (meta as any).fullName : undefined) ||
       (typeof meta?.name === 'string' ? meta.name : undefined);
     return candidate?.trim() || '';
   };
@@ -94,24 +98,31 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
 
   const hasExistingBooking = !!existingBooking;
   const authDisplayName = getAuthDisplayName();
+  const profileDisplayName = (userProfile?.display_name ?? '').trim();
+  const bookingDisplayName = (lastCustomerName ?? '').trim();
+  const derivedEmailName = deriveDisplayNameFromEmail(effectiveUser?.email);
   // NOTE: Don't use `??` here because empty-string values would block later fallbacks.
   // We want: profile -> auth metadata -> last booking -> derived from email.
   const inferredDisplayName = pickFirstNonEmpty(
-    userProfile?.display_name,
+    profileDisplayName,
     authDisplayName,
-    lastCustomerName,
-    deriveDisplayNameFromEmail(user?.email)
+    bookingDisplayName,
+    derivedEmailName
   );
-  const hasCompleteProfile = !!inferredDisplayName;
+  // "Trusted" = came from a user-provided source (profile, account metadata, or past booking).
+  // Email-derived names are acceptable for pre-fill but shouldn't auto-skip the form.
+  const hasTrustedName = !!pickFirstNonEmpty(profileDisplayName, authDisplayName, bookingDisplayName);
+  const hasCompleteProfile = hasTrustedName;
 
   const maybePersistProfile = async (displayName: string) => {
-    if (!user || userProfile?.id) return;
+    const userId = effectiveUser?.id;
+    if (!userId || userProfile?.id) return;
     const safeName = displayName.trim();
     if (!safeName) return;
 
     try {
       await createProfile.mutateAsync({
-        user_id: user.id,
+        user_id: userId,
         display_name: safeName,
       });
     } catch {
@@ -120,14 +131,14 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
   };
 
   const maybePersistAuthMetadata = async (displayName: string) => {
-    if (!user) return;
+    if (!effectiveUser) return;
     const safeName = displayName.trim();
     if (!safeName) return;
     // Avoid extra writes if we already have it in metadata
     if (getAuthDisplayName()) return;
 
     try {
-      await supabase.auth.updateUser({ data: { display_name: safeName } });
+      await supabase.auth.updateUser({ data: { display_name: safeName, full_name: safeName, name: safeName } });
     } catch {
       // Non-fatal; the booking should still succeed.
     }
@@ -143,15 +154,15 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
       }
 
       // Always try to populate from profile/auth when modal opens
-      if (user?.email && !emailTouched) {
-        setEmail(user.email);
+      if (effectiveUser?.email && !emailTouched) {
+        setEmail(effectiveUser.email);
       }
 
       if (!nameTouched) {
         if (inferredDisplayName) setName(inferredDisplayName);
       }
     }
-  }, [slot, user, userProfile, lastCustomerName, inferredDisplayName, nameTouched, emailTouched]);
+  }, [slot, effectiveUser, inferredDisplayName, nameTouched, emailTouched]);
 
   const formatTime = (time: string) => {
     const [hours, minutes] = time.split(':');
@@ -165,7 +176,8 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!slot || !name.trim() || !email.trim() || !user || hasExistingBooking) return;
+    const userId = effectiveUser?.id;
+    if (!slot || !name.trim() || !email.trim() || !userId || hasExistingBooking) return;
 
     try {
       if (isWaitlist) {
@@ -175,7 +187,7 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
           customerEmail: email.trim(),
           customerPhone: phone.trim() || undefined,
           partySize,
-          userId: user.id,
+          userId,
         });
 
         await Promise.all([maybePersistProfile(name.trim()), maybePersistAuthMetadata(name.trim())]);
@@ -191,7 +203,7 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
           customerName: name.trim(),
           customerEmail: email.trim(),
           partySize,
-          userId: user.id,
+          userId,
           isLottery,
         });
 
@@ -209,7 +221,8 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
   };
 
   const handleOneClickBook = async () => {
-    if (!slot || !name.trim() || !email.trim() || !user || hasExistingBooking) return;
+    const userId = effectiveUser?.id;
+    if (!slot || !name.trim() || !email.trim() || !userId || hasExistingBooking) return;
 
     try {
       if (isWaitlist) {
@@ -219,7 +232,7 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
           customerEmail: email.trim(),
           customerPhone: phone.trim() || undefined,
           partySize,
-          userId: user.id,
+          userId,
         });
 
         await Promise.all([maybePersistProfile(name.trim()), maybePersistAuthMetadata(name.trim())]);
@@ -232,7 +245,7 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
           customerName: name.trim(),
           customerEmail: email.trim(),
           partySize,
-          userId: user.id,
+          userId,
           isLottery,
         });
 
@@ -255,7 +268,7 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
   const isPending = bookSlot.isPending || joinWaitlist.isPending || checkingBooking || profileLoading;
 
   // Show sign-in prompt if user is not authenticated
-  if (!user) {
+  if (!effectiveUser) {
     return (
       <Dialog open={!!slot} onOpenChange={() => onClose()}>
         <DialogContent className="sm:max-w-md">
@@ -513,8 +526,8 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
                     onClick={() => {
                       setIsEditing(false);
                       // Reset to profile values
-                      if (userProfile?.display_name) setName(userProfile.display_name);
-                      if (user?.email) setEmail(user.email);
+                      if (inferredDisplayName) setName(inferredDisplayName);
+                      if (effectiveUser?.email) setEmail(effectiveUser.email);
                     }}
                   >
                     Cancel Edit
