@@ -1,84 +1,151 @@
 
 
-# Plan: UI Improvements for Booking Experience
+## Email Notification System for Reservations
 
-## Overview
-Three targeted changes to improve the user experience:
-1. Rename the "Manage Availability" tab to "Create & Manage SGD"
-2. Display the event description in the booking modal
-3. Ensure Full Name auto-populates correctly (investigation shows the code exists but may need adjustment)
+This plan implements automatic email notifications for two scenarios:
+1. **Customer Confirmation**: When a user books a reservation, they receive a confirmation email
+2. **Host Notification**: When someone books an event, the host receives an email alerting them
 
 ---
 
-## Change 1: Rename Tab
+### Overview
 
-**File:** `src/components/customer/CustomerView.tsx`
-
-Update line 52 to change the tab label from "Manage Availability" to "Create & Manage SGD".
+We'll create a secure Edge Function that sends emails using **Resend** (an email delivery service). The function will be called after a successful booking or waitlist join.
 
 ---
 
-## Change 2: Add Event Description to Booking Modal
+### Prerequisites
 
-**File:** `src/components/customer/BookingModal.tsx`
+Before implementation, you'll need to:
+1. Sign up at [resend.com](https://resend.com) (free tier available)
+2. Verify your email domain at [resend.com/domains](https://resend.com/domains)
+3. Create an API key at [resend.com/api-keys](https://resend.com/api-keys)
 
-The booking modal currently shows the event name, date, time, and party size in the summary card. We need to add the event description below the event name when it exists.
+---
 
-**Location:** Inside the summary card (around line 247), after displaying the slot name, add a conditional rendering of the description:
+### How It Works
 
 ```text
-<p className="font-medium">{slot.name}</p>
-{slot.description && (
-  <p className="mt-1 text-sm text-muted-foreground">{slot.description}</p>
-)}
-```
-
-This will also be added to the "Sign In Required" dialog summary card (around line 173) for consistency.
-
----
-
-## Change 3: Full Name Auto-Population
-
-**File:** `src/components/customer/BookingModal.tsx`
-
-The current code has logic to auto-populate from `userProfile.display_name`, but based on the network requests, the user's profile is empty. The issue is that:
-1. The `useEffect` only sets the name when `!name` is true, which prevents re-population on subsequent opens
-2. When the modal opens fresh, it should always try to populate from the profile
-
-**Fix:** Update the `useEffect` to be smarter about when to set the name:
-- When the slot changes (modal opens), reset and re-populate from profile
-- This ensures fresh population each time the modal opens
-
-Updated logic:
-```typescript
-useEffect(() => {
-  if (slot) {
-    // Always try to populate from profile/auth when modal opens
-    if (user?.email) {
-      setEmail(user.email);
-    }
-    if (userProfile?.display_name) {
-      setName(userProfile.display_name);
-    }
-  }
-}, [slot, user, userProfile]);
+┌──────────────────┐
+│  User Books Slot │
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│ Frontend calls   │
+│ Edge Function    │
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│ Edge Function:   │
+│ 1. Fetch slot    │
+│    details       │
+│ 2. Get host info │
+│ 3. Send emails   │
+│    via Resend    │
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────────────────────────────┐
+│ Email to Customer:                       │
+│ "Your reservation is confirmed!"         │
+│                                          │
+│ Email to Host:                           │
+│ "New booking for your event!"            │
+└──────────────────────────────────────────┘
 ```
 
 ---
 
-## Files to Modify
+### What You'll See
 
-| File | Change |
-|------|--------|
-| `src/components/customer/CustomerView.tsx` | Rename tab from "Manage Availability" to "Create & Manage SGD" |
-| `src/components/customer/BookingModal.tsx` | Add event description display in both the authenticated and unauthenticated summary cards |
-| `src/components/customer/BookingModal.tsx` | Update useEffect to properly reset and populate name when modal opens |
+**As a Customer:**
+- After booking, you'll receive an email confirming your reservation with event details (name, date, time, party size)
+
+**As a Host:**
+- When someone books your event, you'll receive an email with the guest's name, email, and party size
 
 ---
 
-## User Experience After Changes
+### Technical Implementation
 
-1. **Tab Name**: Users will see "Create & Manage SGD" instead of "Manage Availability"
-2. **Event Description**: When clicking on an event to book, users will see the event description (e.g., "chefs table type shit") in the summary card before confirming
-3. **Full Name**: The Full Name field will be auto-populated from the user's profile, matching the behavior of the Email Address field
+#### 1. Create Edge Function: `send-booking-notification`
+
+A new backend function at `supabase/functions/send-booking-notification/index.ts` that:
+- Accepts booking details (slot ID, customer info, booking type)
+- Fetches the slot and host information from the database
+- Sends two emails via Resend:
+  - Confirmation to the customer
+  - Notification to the host
+
+#### 2. Update Booking Flow
+
+Modify `src/hooks/useAvailabilitySlots.ts` (`useBookSlot`) to call the edge function after a successful booking.
+
+Modify `src/hooks/useWaitlist.ts` (`useJoinWaitlist`) to call the edge function when someone joins a waitlist.
+
+#### 3. Database Query for Host Email
+
+The edge function will use the service role to:
+- Join `availability_slots` → `auth.users` to get the host's email
+- This is secure because edge functions run server-side with elevated permissions
+
+---
+
+### Email Templates
+
+**Customer Confirmation Email:**
+```
+Subject: Reservation Confirmed - [Event Name]
+
+Hi [Customer Name],
+
+Your reservation has been confirmed!
+
+Event: [Event Name]
+Date: [Date]
+Time: [Time]
+Party Size: [Number] guests
+
+We look forward to seeing you!
+```
+
+**Host Notification Email:**
+```
+Subject: New Reservation - [Event Name]
+
+Hi,
+
+You have a new reservation for your event!
+
+Event: [Event Name]
+Date: [Date]
+Time: [Time]
+
+Guest Details:
+- Name: [Customer Name]
+- Email: [Customer Email]
+- Party Size: [Number] guests
+```
+
+---
+
+### Files to Create/Modify
+
+| File | Action | Purpose |
+|------|--------|---------|
+| `supabase/functions/send-booking-notification/index.ts` | Create | Edge function to send emails |
+| `supabase/config.toml` | Update | Register the new edge function |
+| `src/hooks/useAvailabilitySlots.ts` | Update | Call edge function after booking |
+| `src/hooks/useWaitlist.ts` | Update | Call edge function after waitlist join |
+
+---
+
+### Security Considerations
+
+- The edge function uses the **service role** to access host email (stored in `auth.users`, not accessible from frontend)
+- Customer email is passed from the frontend (already known to the user)
+- The function validates the booking exists before sending
+- CORS headers are properly configured
 
