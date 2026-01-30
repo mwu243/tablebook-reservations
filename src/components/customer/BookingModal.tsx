@@ -67,9 +67,41 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
     return candidate?.trim() || '';
   };
 
+  const deriveDisplayNameFromEmail = (emailAddress?: string | null) => {
+    const emailSafe = (emailAddress ?? '').trim();
+    if (!emailSafe) return '';
+
+    const local = emailSafe.split('@')[0] ?? '';
+    const words = local
+      .replace(/[._-]+/g, ' ')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
+    if (words.length === 0) return local.trim();
+
+    const titleCase = (w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+    return words.map(titleCase).join(' ');
+  };
+
+  const pickFirstNonEmpty = (...candidates: Array<string | null | undefined>) => {
+    for (const c of candidates) {
+      const v = (c ?? '').trim();
+      if (v) return v;
+    }
+    return '';
+  };
+
   const hasExistingBooking = !!existingBooking;
   const authDisplayName = getAuthDisplayName();
-  const inferredDisplayName = userProfile?.display_name ?? authDisplayName ?? lastCustomerName ?? '';
+  // NOTE: Don't use `??` here because empty-string values would block later fallbacks.
+  // We want: profile -> auth metadata -> last booking -> derived from email.
+  const inferredDisplayName = pickFirstNonEmpty(
+    userProfile?.display_name,
+    authDisplayName,
+    lastCustomerName,
+    deriveDisplayNameFromEmail(user?.email)
+  );
   const hasCompleteProfile = !!inferredDisplayName;
 
   const maybePersistProfile = async (displayName: string) => {
