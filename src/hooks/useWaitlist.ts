@@ -71,6 +71,22 @@ export function useJoinWaitlist() {
         .single();
 
       if (error) throw error;
+
+      // Send email notifications (fire and forget - don't block on this)
+      supabase.functions.invoke('send-booking-notification', {
+        body: {
+          slotId,
+          customerName,
+          customerEmail,
+          partySize,
+          bookingType: 'waitlist',
+        },
+      }).then(({ error: notifError }) => {
+        if (notifError) {
+          console.error('Failed to send waitlist notification:', notifError);
+        }
+      });
+
       return data;
     },
     onSuccess: () => {

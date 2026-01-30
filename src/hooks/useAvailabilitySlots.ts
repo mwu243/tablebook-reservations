@@ -113,6 +113,21 @@ export function useBookSlot() {
         if (updateError) throw updateError;
       }
 
+      // Send email notifications (fire and forget - don't block on this)
+      supabase.functions.invoke('send-booking-notification', {
+        body: {
+          slotId,
+          customerName,
+          customerEmail,
+          partySize,
+          bookingType: 'booking',
+        },
+      }).then(({ error }) => {
+        if (error) {
+          console.error('Failed to send booking notification:', error);
+        }
+      });
+
       return { success: true, isLottery };
     },
     onSuccess: () => {
