@@ -29,12 +29,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const syncProfileDisplayNameFromAuth = async (authUser: User) => {
     try {
       const meta = authUser.user_metadata as Record<string, unknown> | undefined;
+      // Support both canonical keys (snake_case) and legacy camelCase keys.
       const nameFromMeta =
         (typeof meta?.display_name === 'string' ? meta.display_name : undefined) ||
         (typeof meta?.full_name === 'string' ? meta.full_name : undefined) ||
+        (typeof (meta as any)?.displayName === 'string' ? (meta as any).displayName : undefined) ||
+        (typeof (meta as any)?.fullName === 'string' ? (meta as any).fullName : undefined) ||
         (typeof meta?.name === 'string' ? meta.name : undefined);
       const safeName = (nameFromMeta ?? '').trim();
       if (!safeName) return;
+
+      // If we only have a legacy key, normalize into canonical metadata keys.
+      // This helps every downstream caller read a consistent field.
+      const hasCanonicalMeta =
+        typeof meta?.display_name === 'string' ||
+        typeof meta?.full_name === 'string' ||
+        typeof meta?.name === 'string';
+      const hasLegacyMeta =
+        typeof (meta as any)?.displayName === 'string' ||
+        typeof (meta as any)?.fullName === 'string';
+
+      if (!hasCanonicalMeta && hasLegacyMeta) {
+        // Non-fatal best-effort; avoids future fallbacks like email-derived names.
+        await supabase.auth.updateUser({
+          data: { display_name: safeName, full_name: safeName, name: safeName },
+        });
+      }
 
       // Ensure a profile row exists (and keep display_name in sync) so downstream UI can rely on it.
       await supabase

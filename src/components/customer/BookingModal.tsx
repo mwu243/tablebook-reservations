@@ -66,6 +66,7 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
     const candidate =
       (typeof meta?.display_name === 'string' ? meta.display_name : undefined) ||
       (typeof meta?.full_name === 'string' ? meta.full_name : undefined) ||
+      (typeof (meta as any)?.displayName === 'string' ? (meta as any).displayName : undefined) ||
       (typeof (meta as any)?.fullName === 'string' ? (meta as any).fullName : undefined) ||
       (typeof meta?.name === 'string' ? meta.name : undefined);
     return candidate?.trim() || '';
