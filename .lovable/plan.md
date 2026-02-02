@@ -1,140 +1,208 @@
 
 
-## Enhanced SGD Discovery and Calendar Export Features
+## Event and Reservation Enhancements
 
-This plan implements three improvements to help users discover events and manage their reservations more effectively:
+This plan addresses four key improvements:
 
-1. **Upcoming Events List View** - A scrollable list showing all upcoming SGDs with key details at a glance
-2. **Calendar Event Count Badges** - Replace single green dot with count badges showing how many events are on each day
-3. **ICS Calendar Export** - Download calendar invites for confirmed reservations
+1. **Location and Cost Fields** for event creation
+2. **Dietary Restrictions** field for reservations (visible to event owners)
+3. **Confirmed vs Waitlist Lists** for event owners
+4. **Fix Available Spots Input Bug**
 
 ---
 
-### Feature 1: Upcoming Events List View
+### Issue 1: Add Location and Estimated Cost Fields to Events
 
 #### What You'll See
-Above the calendar, a new "Upcoming Events" section will display a scrollable list of all SGDs. Each event card will show:
-- Event name and description
-- Host name (from their profile)
-- Date and time
-- Spots availability (e.g., "3 of 8 spots left" or "Sold Out")
-- Booking type badge (Instant Booking, Lottery, or Waitlist Available)
-- Click to jump directly to the booking modal
+When creating or editing an event, two new optional fields will appear:
+- **Location**: Text field for the venue/address
+- **Estimated Cost per Person**: Currency input (e.g., "$25")
 
-#### Layout
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  📋 Upcoming Events                              View All → │
-├─────────────────────────────────────────────────────────────┤
-│ ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐ │
-│ │ Wine Tasting    │ │ Omakase Night   │ │ Brunch Club     │ │
-│ │ Hosted by Josh  │ │ Hosted by Mike  │ │ Hosted by Sarah │ │
-│ │ Feb 5 · 7:00 PM │ │ Feb 8 · 6:30 PM │ │ Feb 10 · 11 AM  │ │
-│ │ 🎟️ 3 spots left │ │ 🎲 Lottery      │ │ ⏳ Waitlist     │ │
-│ │    [Book Now]   │ │  [Enter Lottery]│ │  [Join List]    │ │
-│ └─────────────────┘ └─────────────────┘ └─────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-```
+These will display on event cards in the Upcoming Events list and in booking confirmations.
 
-#### Technical Implementation
-| File | Changes |
-|------|---------|
-| `src/hooks/useUpcomingEventsWithHosts.ts` | New hook to fetch upcoming slots with host profiles joined |
-| `src/components/customer/UpcomingEventsList.tsx` | New component - horizontal scrollable event cards |
-| `src/components/customer/EventCard.tsx` | New component - individual event card with actions |
-| `src/components/customer/CustomerView.tsx` | Add UpcomingEventsList above the calendar |
+#### Technical Details
+
+| Component | Change |
+|-----------|--------|
+| **Database** | Add `location` (text, nullable) and `estimated_cost_per_person` (numeric, nullable) columns to `availability_slots` table |
+| `src/lib/types.ts` | Update `AvailabilitySlot` interface with new fields |
+| `src/components/admin/AvailabilityManager.tsx` | Add location and cost input fields to creation form |
+| `src/components/admin/EditSlotModal.tsx` | Add location and cost input fields to edit form |
+| `src/components/customer/EventCard.tsx` | Display location and cost on event cards |
+| `src/components/customer/BookingModal.tsx` | Show location and cost in booking confirmation |
 
 ---
 
-### Feature 2: Calendar Event Count Badges
+### Issue 2: Dietary Restrictions for Reservations
 
 #### What You'll See
-Instead of a simple green dot, each date with events will show a small badge with the count of available events. Examples:
-- "2" - Two events with open spots
-- "3" - Three events with open spots
-- Dates with no available spots show grayed styling
+**For Users (when booking):**
+- New text field: "Dietary Restrictions (optional)" with placeholder text like "e.g., Vegetarian, Gluten-free, Nut allergy"
 
-#### Visual Design
-```text
-┌────────────────────────────────────┐
-│          February 2026             │
-├────────────────────────────────────┤
-│  Su   Mo   Tu   We   Th   Fr   Sa  │
-│                              1     │
-│   2    3    4    5    6    7    8  │
-│                   ⬤2       ⬤1     │
-│   9   10   11   12   13   14   15  │
-│       ⬤3                           │
-└────────────────────────────────────┘
-```
+**For Event Owners (in Reservations list):**
+- Each participant's dietary restrictions displayed alongside their booking info
 
-#### Technical Implementation
-| File | Changes |
-|------|---------|
-| `src/hooks/useMonthAvailability.ts` | Change return type from `Map<string, boolean>` to `Map<string, number>` (count of available events) |
-| `src/components/customer/AvailabilityCalendar.tsx` | Update Day component to display count badge instead of dot |
+#### Technical Details
+
+| Component | Change |
+|-----------|--------|
+| **Database** | Add `dietary_restrictions` (text, nullable) column to `bookings` table |
+| `src/components/customer/BookingModal.tsx` | Add dietary restrictions input field |
+| `src/hooks/useAvailabilitySlots.ts` | Pass dietary restrictions in booking mutation |
+| `src/hooks/useWaitlist.ts` | Pass dietary restrictions when joining waitlist |
+| `src/components/admin/ReservationsList.tsx` | Display dietary restrictions for each booking |
+| **Waitlist table** | Add `dietary_restrictions` column to `waitlist_entries` |
+| `get_participant_payment_info` RPC | Update to include dietary_restrictions |
 
 ---
 
-### Feature 3: ICS Calendar Export
+### Issue 3: Separate Confirmed and Waitlist Views for Event Owners
 
 #### What You'll See
-In the "My Reservations" section, confirmed bookings will show an "Add to Calendar" button. Clicking it downloads an .ics file that can be opened in Outlook, Google Calendar, Apple Calendar, etc.
+In the "Reservations for Your Events" section, each event will show:
+- **Confirmed Guests** tab with count badge
+- **Waitlist** tab with count badge (only if waitlist is enabled)
 
-The calendar event will include:
-- Event title (SGD name)
-- Date and time (with proper timezone)
-- Description with party size and any event details
+Each list shows the attendee name, email, party size, and dietary restrictions.
 
-#### Technical Implementation
-| File | Changes |
-|------|---------|
-| `src/lib/icsGenerator.ts` | New utility - generates ICS file content from booking data |
-| `src/components/customer/MyReservations.tsx` | Add "Add to Calendar" button next to each confirmed upcoming booking |
+#### Technical Details
 
-#### ICS File Format
-```text
-BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//SGD Reservations//EN
-BEGIN:VEVENT
-DTSTART:20260205T190000Z
-DTEND:20260205T210000Z
-SUMMARY:Wine Tasting Experience
-DESCRIPTION:Party of 2 guests\n\nHosted SGD event
-UID:booking-abc123@sgd.app
-END:VEVENT
-END:VCALENDAR
-```
+| Component | Change |
+|-----------|--------|
+| `src/hooks/useOwnerBookings.ts` | Add `useOwnerWaitlistEntries()` hook to fetch waitlist for owned slots |
+| `src/components/admin/ReservationsList.tsx` | Add sub-tabs per event showing "Confirmed" and "Waitlist" with counts |
 
 ---
 
-### Summary of Files to Create/Modify
+### Issue 4: Fix "Available Spots" Input Bug
+
+#### The Problem
+The current implementation uses:
+```typescript
+onChange={(e) => setTotalSpots(Math.max(1, parseInt(e.target.value) || 1))}
+```
+
+This prevents the user from clearing the field to type a new number because:
+- When user selects "1" and tries to delete it, the field becomes empty
+- `parseInt('')` returns `NaN`
+- `NaN || 1` evaluates to `1`
+- So the field snaps back to "1" immediately
+
+#### The Fix
+Allow the input to be empty during editing, only enforcing minimum on blur or submit:
+```typescript
+const [totalSpotsInput, setTotalSpotsInput] = useState('1');
+
+// On change: allow any value including empty
+onChange={(e) => setTotalSpotsInput(e.target.value)}
+
+// On blur: enforce minimum
+onBlur={() => {
+  const parsed = parseInt(totalSpotsInput);
+  if (isNaN(parsed) || parsed < 1) {
+    setTotalSpotsInput('1');
+  }
+}}
+```
+
+#### Files to Update
+- `src/components/admin/AvailabilityManager.tsx` - Fix the Available Spots input
+- `src/components/admin/EditSlotModal.tsx` - Fix the Total Spots input
+
+---
+
+### Summary of Changes
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `src/hooks/useUpcomingEventsWithHosts.ts` | Create | Fetch upcoming slots with host display names |
-| `src/components/customer/UpcomingEventsList.tsx` | Create | Horizontal scrollable events list component |
-| `src/components/customer/EventCard.tsx` | Create | Individual event card with booking actions |
-| `src/lib/icsGenerator.ts` | Create | ICS file generation utility |
-| `src/hooks/useMonthAvailability.ts` | Modify | Return event counts instead of boolean |
-| `src/components/customer/AvailabilityCalendar.tsx` | Modify | Display count badges on calendar days |
-| `src/components/customer/CustomerView.tsx` | Modify | Add UpcomingEventsList component |
-| `src/components/customer/MyReservations.tsx` | Modify | Add "Add to Calendar" button |
+| **Database Migration** | Create | Add `location`, `estimated_cost_per_person` to `availability_slots`; Add `dietary_restrictions` to `bookings` and `waitlist_entries` |
+| `src/lib/types.ts` | Modify | Add new fields to types |
+| `src/components/admin/AvailabilityManager.tsx` | Modify | Add location/cost fields, fix spots bug |
+| `src/components/admin/EditSlotModal.tsx` | Modify | Add location/cost fields, fix spots bug |
+| `src/components/customer/BookingModal.tsx` | Modify | Add dietary restrictions field, show location/cost |
+| `src/hooks/useAvailabilitySlots.ts` | Modify | Include dietary restrictions in booking |
+| `src/hooks/useWaitlist.ts` | Modify | Include dietary restrictions in waitlist join |
+| `src/hooks/useOwnerBookings.ts` | Modify | Add waitlist query for owned slots, include dietary restrictions |
+| `src/components/admin/ReservationsList.tsx` | Modify | Show confirmed vs waitlist tabs, display dietary restrictions |
+| `src/components/customer/EventCard.tsx` | Modify | Display location and cost |
+| `get_participant_payment_info` RPC | Update | Return dietary_restrictions |
 
 ---
 
-### Database Considerations
+### Database Schema Changes
 
-To display host names in the events list, we'll join `availability_slots` with `user_profiles` on the `user_id` field. The existing RLS policy "Anyone can view availability slots" allows this query. However, `user_profiles` has an RLS policy limiting reads to own profile only.
+```text
+availability_slots
+├── location (text, nullable) - NEW
+└── estimated_cost_per_person (numeric, nullable) - NEW
 
-**Solution**: We'll add a new RLS policy on `user_profiles` to allow reading `display_name` for hosts of public events. This ensures privacy while enabling the feature.
+bookings
+└── dietary_restrictions (text, nullable) - NEW
+
+waitlist_entries
+└── dietary_restrictions (text, nullable) - NEW
+```
 
 ---
 
-### No Breaking Changes
-- All existing functionality remains intact
-- Calendar still works the same way (click date to see slots)
-- Event list is additive - provides an alternative discovery path
-- ICS export is optional and non-intrusive
+### User Interface Flow
+
+**Event Creation (Host):**
+```text
+┌─────────────────────────────────────────┐
+│ Create Availability                      │
+├─────────────────────────────────────────┤
+│ Event Name: [Wine Tasting Evening    ]  │
+│ Description: [Premium wine selection ]  │
+│                                         │
+│ Location (optional):                    │
+│ [123 Main St, Downtown              ]   │
+│                                         │
+│ Est. Cost/Person (optional):            │
+│ [$25.00                             ]   │
+│                                         │
+│ Date: [Feb 5, 2026  ]                   │
+│ Start: [6:30 PM] End: [8:30 PM]         │
+│ Available Spots: [8            ]        │
+│                                         │
+│ [Create Availability]                   │
+└─────────────────────────────────────────┘
+```
+
+**Booking (Customer):**
+```text
+┌─────────────────────────────────────────┐
+│ Complete Your Reservation               │
+├─────────────────────────────────────────┤
+│ Wine Tasting Evening                    │
+│ 📍 123 Main St, Downtown                │
+│ 💰 ~$25 per person                      │
+│ Feb 5, 2026 · 6:30 PM                   │
+├─────────────────────────────────────────┤
+│ Booking as: John Doe                    │
+│             john@email.com              │
+│                                         │
+│ Dietary Restrictions (optional):        │
+│ [Vegetarian, no shellfish          ]   │
+│                                         │
+│ [Cancel]            [Confirm Booking]   │
+└─────────────────────────────────────────┘
+```
+
+**Host View - Reservations:**
+```text
+┌─────────────────────────────────────────┐
+│ Wine Tasting Evening - Feb 5            │
+│ ┌───────────────┬────────────────┐      │
+│ │ Confirmed (6) │ Waitlist (2)   │      │
+│ └───────────────┴────────────────┘      │
+├─────────────────────────────────────────┤
+│ ✓ John Doe - john@email.com             │
+│   Party: 2 | Diet: Vegetarian           │
+│                                         │
+│ ✓ Jane Smith - jane@email.com           │
+│   Party: 1 | Diet: Gluten-free          │
+│ ...                                     │
+└─────────────────────────────────────────┘
+```
 
