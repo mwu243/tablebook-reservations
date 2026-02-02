@@ -12,20 +12,7 @@ export function useUpcomingBookings() {
         .from('bookings')
         .select(`
           *,
-          availability_slots (
-            id,
-            date,
-            time,
-            end_time,
-            total_tables,
-            booked_tables,
-            name,
-            description,
-            booking_mode,
-            created_at,
-            user_id,
-            waitlist_enabled
-          )
+          availability_slots (*)
         `)
         .eq('status', 'confirmed')
         .gte('availability_slots.date', today)

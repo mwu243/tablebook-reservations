@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { Calendar, Clock, Users, Ticket, Shuffle, AlertCircle } from 'lucide-react';
+import { Calendar, Clock, Users, Ticket, Shuffle, AlertCircle, MapPin, DollarSign } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -88,6 +88,18 @@ export function EventCard({ event, onBookClick }: EventCardProps) {
               {event.end_time && ` – ${formatTime(event.end_time)}`}
             </span>
           </div>
+          {event.location && (
+            <div className="flex items-center gap-2">
+              <MapPin className="h-4 w-4" />
+              <span className="truncate">{event.location}</span>
+            </div>
+          )}
+          {event.estimated_cost_per_person != null && (
+            <div className="flex items-center gap-2">
+              <DollarSign className="h-4 w-4" />
+              <span>~${event.estimated_cost_per_person.toFixed(2)} per person</span>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <Users className="h-4 w-4" />
             {isSoldOut ? (

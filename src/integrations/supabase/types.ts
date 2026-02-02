@@ -245,6 +245,7 @@ export type Database = {
           booking_id: string
           customer_email: string
           customer_name: string
+          dietary_restrictions: string
           party_size: number
           venmo_username: string
           zelle_identifier: string

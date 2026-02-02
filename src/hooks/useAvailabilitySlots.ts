@@ -40,6 +40,8 @@ interface CreateSlotInput {
   booking_mode: BookingMode;
   user_id: string;
   waitlist_enabled?: boolean;
+  location?: string | null;
+  estimated_cost_per_person?: number | null;
 }
 
 export function useCreateAvailabilitySlots() {
@@ -54,6 +56,8 @@ export function useCreateAvailabilitySlots() {
             ...slot, 
             booked_tables: 0,
             waitlist_enabled: slot.waitlist_enabled ?? false,
+            location: slot.location ?? null,
+            estimated_cost_per_person: slot.estimated_cost_per_person ?? null,
           }))
         )
         .select();
@@ -80,6 +84,7 @@ export function useBookSlot() {
       partySize,
       userId,
       isLottery = false,
+      dietaryRestrictions,
     }: {
       slotId: string;
       customerName: string;
@@ -87,6 +92,7 @@ export function useBookSlot() {
       partySize: number;
       userId?: string;
       isLottery?: boolean;
+      dietaryRestrictions?: string;
     }) => {
       // Create booking with appropriate status and user_id
       const status = isLottery ? 'pending_lottery' : 'confirmed';
@@ -99,6 +105,7 @@ export function useBookSlot() {
           party_size: partySize,
           user_id: userId,
           status,
+          dietary_restrictions: dietaryRestrictions || null,
         });
 
       if (bookingError) throw bookingError;
@@ -173,6 +180,8 @@ interface UpdateSlotInput {
     end_time?: string | null;
     total_tables?: number;
     waitlist_enabled?: boolean;
+    location?: string | null;
+    estimated_cost_per_person?: number | null;
   };
 }
 
