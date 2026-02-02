@@ -4,7 +4,7 @@ import { format, startOfMonth, endOfMonth } from 'date-fns';
 
 export interface DateAvailability {
   date: string;
-  hasAvailability: boolean;
+  count: number;
 }
 
 export function useMonthAvailability(month: Date) {
@@ -22,19 +22,18 @@ export function useMonthAvailability(month: Date) {
 
       if (error) throw error;
 
-      // Aggregate by date: check if any slot has availability
-      const availabilityByDate = new Map<string, boolean>();
+      // Aggregate by date: count how many slots have availability
+      const availabilityCountByDate = new Map<string, number>();
       
       data?.forEach((slot) => {
         const hasOpenSlot = slot.booked_tables < slot.total_tables;
         if (hasOpenSlot) {
-          availabilityByDate.set(slot.date, true);
-        } else if (!availabilityByDate.has(slot.date)) {
-          availabilityByDate.set(slot.date, false);
+          const currentCount = availabilityCountByDate.get(slot.date) || 0;
+          availabilityCountByDate.set(slot.date, currentCount + 1);
         }
       });
 
-      return availabilityByDate;
+      return availabilityCountByDate;
     },
     refetchInterval: 10000, // Refresh every 10 seconds
   });

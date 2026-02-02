@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { format } from 'date-fns';
-import { CalendarCheck, Loader2, Ticket, Shuffle, Clock, X } from 'lucide-react';
+import { CalendarCheck, Loader2, Ticket, Shuffle, Clock, X, Download } from 'lucide-react';
 import { useUserBookings } from '@/hooks/useUserBookings';
 import { useCancelBooking, useUserWaitlistEntries, useLeaveWaitlist } from '@/hooks/useWaitlist';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +17,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { toast } from '@/hooks/use-toast';
+import { downloadICSFile } from '@/lib/icsGenerator';
 
 export function MyReservations() {
   const { data: bookings, isLoading: bookingsLoading } = useUserBookings();
@@ -83,6 +84,25 @@ export function MyReservations() {
     } finally {
       setCancelDialog({ open: false, bookingId: null, type: 'booking' });
     }
+  };
+
+  const handleAddToCalendar = (booking: NonNullable<typeof bookings>[number]) => {
+    if (!booking.availability_slots) return;
+    
+    downloadICSFile({
+      id: booking.id,
+      title: booking.availability_slots.name || 'SGD Reservation',
+      date: booking.availability_slots.date,
+      startTime: booking.availability_slots.time,
+      endTime: booking.availability_slots.end_time,
+      description: booking.availability_slots.description || undefined,
+      partySize: booking.party_size,
+    });
+
+    toast({
+      title: 'Calendar Event Downloaded',
+      description: 'Open the .ics file to add it to your calendar.',
+    });
   };
 
   if (isLoading) {
@@ -168,18 +188,31 @@ export function MyReservations() {
                     </span>
                   </div>
                   
-                  {/* Cancel Button - Only for confirmed or pending bookings */}
-                  {(booking.status === 'confirmed' || booking.status === 'pending_lottery') && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="mt-3 w-full text-destructive hover:bg-destructive hover:text-destructive-foreground"
-                      onClick={() => setCancelDialog({ open: true, bookingId: booking.id, type: 'booking' })}
-                    >
-                      <X className="mr-1.5 h-4 w-4" />
-                      Cancel Reservation
-                    </Button>
-                  )}
+                  {/* Action Buttons */}
+                  <div className="mt-3 flex gap-2">
+                    {booking.status === 'confirmed' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => handleAddToCalendar(booking)}
+                      >
+                        <Download className="mr-1.5 h-4 w-4" />
+                        Add to Calendar
+                      </Button>
+                    )}
+                    {(booking.status === 'confirmed' || booking.status === 'pending_lottery') && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={booking.status === 'confirmed' ? 'flex-1 text-destructive hover:bg-destructive hover:text-destructive-foreground' : 'w-full text-destructive hover:bg-destructive hover:text-destructive-foreground'}
+                        onClick={() => setCancelDialog({ open: true, bookingId: booking.id, type: 'booking' })}
+                      >
+                        <X className="mr-1.5 h-4 w-4" />
+                        Cancel
+                      </Button>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             ))}
