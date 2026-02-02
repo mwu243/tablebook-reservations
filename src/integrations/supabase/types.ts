@@ -64,6 +64,7 @@ export type Database = {
           created_at: string
           customer_email: string
           customer_name: string
+          dietary_restrictions: string | null
           id: string
           party_size: number
           slot_id: string
@@ -74,6 +75,7 @@ export type Database = {
           created_at?: string
           customer_email: string
           customer_name: string
+          dietary_restrictions?: string | null
           id?: string
           party_size: number
           slot_id: string
@@ -84,6 +86,7 @@ export type Database = {
           created_at?: string
           customer_email?: string
           customer_name?: string
+          dietary_restrictions?: string | null
           id?: string
           party_size?: number
           slot_id?: string
@@ -157,6 +160,7 @@ export type Database = {
           customer_email: string
           customer_name: string
           customer_phone: string | null
+          dietary_restrictions: string | null
           id: string
           notified_at: string | null
           party_size: number
@@ -169,6 +173,7 @@ export type Database = {
           customer_email: string
           customer_name: string
           customer_phone?: string | null
+          dietary_restrictions?: string | null
           id?: string
           notified_at?: string | null
           party_size: number
@@ -181,6 +186,7 @@ export type Database = {
           customer_email?: string
           customer_name?: string
           customer_phone?: string | null
+          dietary_restrictions?: string | null
           id?: string
           notified_at?: string | null
           party_size?: number
