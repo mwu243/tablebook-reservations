@@ -194,11 +194,11 @@ export function ReservationsList() {
     </div>
   );
 
-  const renderGroupedSlot = (group: GroupedBookings, isPast: boolean) => {
+  const GroupedSlotCard = ({ group, isPast }: { group: GroupedBookings; isPast: boolean }) => {
     const [activeSubTab, setActiveSubTab] = useState<'confirmed' | 'waitlist'>('confirmed');
 
     return (
-      <div key={group.slotId} className="space-y-3">
+      <div className="space-y-3">
         {/* Slot Header */}
         <div className="flex items-center justify-between border-b pb-2">
           <div className="flex items-center gap-2">
@@ -288,7 +288,9 @@ export function ReservationsList() {
 
     return (
       <div className="space-y-6">
-        {groupedList.map((group) => renderGroupedSlot(group, isPast))}
+        {groupedList.map((group) => (
+          <GroupedSlotCard key={group.slotId} group={group} isPast={isPast} />
+        ))}
       </div>
     );
   };
