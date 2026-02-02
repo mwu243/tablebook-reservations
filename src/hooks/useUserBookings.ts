@@ -15,6 +15,7 @@ export interface UserBooking {
     time: string;
     end_time: string | null;
     name: string;
+    description: string | null;
     booking_mode: string;
   } | null;
 }
@@ -48,7 +49,7 @@ export function useUserBookings() {
       // Fetch availability slots for these bookings
       const slotsResult = await client
         .from('availability_slots')
-        .select('id, date, time, end_time, name, booking_mode')
+        .select('id, date, time, end_time, name, description, booking_mode')
         .in('id', slotIds);
 
       if (slotsResult.error) throw slotsResult.error;

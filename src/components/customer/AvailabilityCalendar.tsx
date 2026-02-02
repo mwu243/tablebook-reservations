@@ -24,17 +24,17 @@ export function AvailabilityCalendar({ selected, onSelect }: AvailabilityCalenda
     const dateStr = format(date, 'yyyy-MM-dd');
     // If we have data, disable dates with no availability
     if (availabilityMap) {
-      return !availabilityMap.get(dateStr);
+      return !availabilityMap.has(dateStr) || availabilityMap.get(dateStr) === 0;
     }
     // While loading, don't disable future dates
     return false;
   };
 
-  // Check if a date has availability
-  const hasAvailability = (date: Date): boolean => {
-    if (date < today) return false;
+  // Get availability count for a date
+  const getAvailabilityCount = (date: Date): number => {
+    if (date < today) return 0;
     const dateStr = format(date, 'yyyy-MM-dd');
-    return availabilityMap?.get(dateStr) === true;
+    return availabilityMap?.get(dateStr) || 0;
   };
 
   return (
@@ -82,7 +82,7 @@ export function AvailabilityCalendar({ selected, onSelect }: AvailabilityCalenda
           IconRight: () => <ChevronRight className="h-5 w-5" />,
           Day: ({ date, displayMonth, ...props }: DayProps) => {
             const isDisabled = isDateDisabled(date);
-            const isAvailable = hasAvailability(date);
+            const eventCount = getAvailabilityCount(date);
             const isSelected = selected && isSameDay(date, selected);
             const isCurrentMonth = date.getMonth() === displayMonth.getMonth();
             const isToday = isSameDay(date, today);
@@ -106,11 +106,15 @@ export function AvailabilityCalendar({ selected, onSelect }: AvailabilityCalenda
               >
                 <span className="flex h-full w-full flex-col items-center justify-center">
                   <span>{date.getDate()}</span>
-                  {isAvailable && !isSelected && (
-                    <span className="absolute bottom-1.5 h-1.5 w-1.5 rounded-full bg-green-500" />
+                  {eventCount > 0 && !isSelected && (
+                    <span className="absolute bottom-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-green-500 px-1 text-[10px] font-bold text-white">
+                      {eventCount}
+                    </span>
                   )}
-                  {isAvailable && isSelected && (
-                    <span className="absolute bottom-1.5 h-1.5 w-1.5 rounded-full bg-primary-foreground" />
+                  {eventCount > 0 && isSelected && (
+                    <span className="absolute bottom-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary-foreground px-1 text-[10px] font-bold text-primary">
+                      {eventCount}
+                    </span>
                   )}
                 </span>
               </button>
@@ -122,8 +126,8 @@ export function AvailabilityCalendar({ selected, onSelect }: AvailabilityCalenda
       {/* Legend */}
       <div className="mt-4 flex items-center justify-center gap-6 border-t pt-4 text-sm text-muted-foreground">
         <div className="flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-green-500" />
-          <span>Available</span>
+          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-green-500 text-[10px] font-bold text-white">2</span>
+          <span>Events available</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
