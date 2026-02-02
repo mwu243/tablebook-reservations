@@ -28,7 +28,7 @@ export function CustomerView() {
   const { data: slots, isLoading } = useAvailabilitySlots(date, mealTime);
 
   // Handle clicking an event from the upcoming events list
-  const handleEventClick = (event: UpcomingEventWithHost) => {
+  const handleEventClick = (event: UpcomingEventWithHost, eventPartySize?: number) => {
     const isSoldOut = event.booked_tables >= event.total_tables;
     
     // Convert to AvailabilitySlot format
@@ -48,6 +48,11 @@ export function CustomerView() {
       location: event.location ?? null,
       estimated_cost_per_person: event.estimated_cost_per_person ?? null,
     };
+
+    // Set party size if provided from event card
+    if (eventPartySize !== undefined) {
+      setPartySize(eventPartySize);
+    }
 
     if (isSoldOut && event.waitlist_enabled) {
       setIsWaitlistMode(true);

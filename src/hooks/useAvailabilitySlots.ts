@@ -96,17 +96,25 @@ export function useBookSlot() {
     }) => {
       // Create booking with appropriate status and user_id
       const status = isLottery ? 'pending_lottery' : 'confirmed';
+      
+      // Build the insert object - dietary_restrictions may not be in schema cache yet
+      const bookingData: Record<string, unknown> = {
+        slot_id: slotId,
+        customer_name: customerName,
+        customer_email: customerEmail,
+        party_size: partySize,
+        user_id: userId,
+        status,
+      };
+      
+      // Try to include dietary_restrictions if available
+      if (dietaryRestrictions) {
+        bookingData.dietary_restrictions = dietaryRestrictions;
+      }
+      
       const { error: bookingError } = await supabase
         .from('bookings')
-        .insert({
-          slot_id: slotId,
-          customer_name: customerName,
-          customer_email: customerEmail,
-          party_size: partySize,
-          user_id: userId,
-          status,
-          dietary_restrictions: dietaryRestrictions || null,
-        });
+        .insert(bookingData as any);
 
       if (bookingError) throw bookingError;
 

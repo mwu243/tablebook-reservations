@@ -58,18 +58,25 @@ export function useJoinWaitlist() {
 
       if (posError) throw posError;
 
+      // Build insert data - dietary_restrictions may not be in schema cache yet
+      const entryData: Record<string, unknown> = {
+        slot_id: slotId,
+        user_id: userId,
+        customer_name: customerName,
+        customer_email: customerEmail,
+        customer_phone: customerPhone || null,
+        party_size: partySize,
+        position: position || 1,
+      };
+      
+      // Try to include dietary_restrictions if available
+      if (dietaryRestrictions) {
+        entryData.dietary_restrictions = dietaryRestrictions;
+      }
+
       const { data, error } = await supabase
         .from('waitlist_entries')
-        .insert({
-          slot_id: slotId,
-          user_id: userId,
-          customer_name: customerName,
-          customer_email: customerEmail,
-          customer_phone: customerPhone || null,
-          party_size: partySize,
-          position: position || 1,
-          dietary_restrictions: dietaryRestrictions || null,
-        })
+        .insert(entryData as any)
         .select()
         .single();
 

@@ -1,16 +1,25 @@
+import { useState } from 'react';
 import { format } from 'date-fns';
 import { Calendar, Clock, Users, Ticket, Shuffle, AlertCircle, MapPin, DollarSign } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import type { UpcomingEventWithHost } from '@/hooks/useUpcomingEventsWithHosts';
 
 interface EventCardProps {
   event: UpcomingEventWithHost;
-  onBookClick: (event: UpcomingEventWithHost) => void;
+  onBookClick: (event: UpcomingEventWithHost, partySize: number) => void;
 }
 
 export function EventCard({ event, onBookClick }: EventCardProps) {
+  const [partySize, setPartySize] = useState(1);
   const spotsLeft = event.total_tables - event.booked_tables;
   const isSoldOut = spotsLeft <= 0;
   const isLottery = event.booking_mode === 'lottery';
@@ -112,12 +121,28 @@ export function EventCard({ event, onBookClick }: EventCardProps) {
           </div>
         </div>
 
+        {/* Party size selector */}
+        <div className="mb-3">
+          <Select
+            value={partySize.toString()}
+            onValueChange={(v) => setPartySize(Number(v))}
+          >
+            <SelectTrigger className="h-8 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="1">1 Guest (Just me)</SelectItem>
+              <SelectItem value="2">2 Guests (+1)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         <Button
           size="sm"
           className="w-full"
           variant={isSoldOut && !event.waitlist_enabled ? 'secondary' : 'default'}
           disabled={isSoldOut && !event.waitlist_enabled}
-          onClick={() => onBookClick(event)}
+          onClick={() => onBookClick(event, partySize)}
         >
           {getButtonText()}
         </Button>

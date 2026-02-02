@@ -5,7 +5,7 @@ import { useUpcomingEventsWithHosts, UpcomingEventWithHost } from '@/hooks/useUp
 import { EventCard } from './EventCard';
 
 interface UpcomingEventsListProps {
-  onEventClick: (event: UpcomingEventWithHost) => void;
+  onEventClick: (event: UpcomingEventWithHost, partySize?: number) => void;
 }
 
 export function UpcomingEventsList({ onEventClick }: UpcomingEventsListProps) {
