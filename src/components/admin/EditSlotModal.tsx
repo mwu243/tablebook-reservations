@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
-import { CalendarIcon, Loader2, Save } from 'lucide-react';
+import { CalendarIcon, Loader2, Save, MapPin, DollarSign } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -36,10 +36,12 @@ export function EditSlotModal({ open, onOpenChange, slot }: EditSlotModalProps) 
   
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [location, setLocation] = useState('');
+  const [estimatedCost, setEstimatedCost] = useState('');
   const [date, setDate] = useState<Date | undefined>();
   const [time, setTime] = useState('');
   const [endTime, setEndTime] = useState('');
-  const [totalTables, setTotalTables] = useState(1);
+  const [totalTablesInput, setTotalTablesInput] = useState('1');
   const [waitlistEnabled, setWaitlistEnabled] = useState(false);
 
   // Reset form when slot changes
@@ -47,10 +49,12 @@ export function EditSlotModal({ open, onOpenChange, slot }: EditSlotModalProps) 
     if (slot) {
       setName(slot.name);
       setDescription(slot.description || '');
+      setLocation(slot.location || '');
+      setEstimatedCost(slot.estimated_cost_per_person?.toString() || '');
       setDate(new Date(slot.date));
       setTime(slot.time.slice(0, 5)); // HH:MM format
       setEndTime(slot.end_time ? slot.end_time.slice(0, 5) : '');
-      setTotalTables(slot.total_tables);
+      setTotalTablesInput(slot.total_tables.toString());
       setWaitlistEnabled(slot.waitlist_enabled);
     }
   }, [slot]);
@@ -66,10 +70,13 @@ export function EditSlotModal({ open, onOpenChange, slot }: EditSlotModalProps) 
       return;
     }
 
-    if (totalTables < slot.booked_tables) {
+    const parsedTables = parseInt(totalTablesInput) || 1;
+    if (parsedTables < slot.booked_tables) {
       toast.error(`Cannot reduce tables below ${slot.booked_tables} (already booked)`);
       return;
     }
+
+    const parsedCost = estimatedCost ? parseFloat(estimatedCost) : null;
 
     try {
       await updateSlot.mutateAsync({
@@ -80,8 +87,10 @@ export function EditSlotModal({ open, onOpenChange, slot }: EditSlotModalProps) 
           date: format(date, 'yyyy-MM-dd'),
           time: time + ':00',
           end_time: endTime ? endTime + ':00' : null,
-          total_tables: totalTables,
+          total_tables: parsedTables,
           waitlist_enabled: waitlistEnabled,
+          location: location || null,
+          estimated_cost_per_person: parsedCost,
         },
       });
       toast.success('Event updated successfully');
@@ -130,6 +139,40 @@ export function EditSlotModal({ open, onOpenChange, slot }: EditSlotModalProps) 
                 placeholder="Add details about this event..."
                 rows={2}
               />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-location">
+                  <div className="flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5" />
+                    Location (optional)
+                  </div>
+                </Label>
+                <Input
+                  id="edit-location"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  placeholder="e.g., 123 Main St"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-cost">
+                  <div className="flex items-center gap-1.5">
+                    <DollarSign className="h-3.5 w-3.5" />
+                    Est. Cost/Person
+                  </div>
+                </Label>
+                <Input
+                  id="edit-cost"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={estimatedCost}
+                  onChange={(e) => setEstimatedCost(e.target.value)}
+                  placeholder="e.g., 25.00"
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -186,8 +229,15 @@ export function EditSlotModal({ open, onOpenChange, slot }: EditSlotModalProps) 
                 id="edit-tables"
                 type="number"
                 min={slot.booked_tables || 1}
-                value={totalTables}
-                onChange={(e) => setTotalTables(parseInt(e.target.value) || 1)}
+                value={totalTablesInput}
+                onChange={(e) => setTotalTablesInput(e.target.value)}
+                onBlur={() => {
+                  const parsed = parseInt(totalTablesInput);
+                  const minVal = slot.booked_tables || 1;
+                  if (isNaN(parsed) || parsed < minVal) {
+                    setTotalTablesInput(minVal.toString());
+                  }
+                }}
                 required
               />
               {slot.booked_tables > 0 && (

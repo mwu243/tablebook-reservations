@@ -40,6 +40,7 @@ export function useJoinWaitlist() {
       customerPhone,
       partySize,
       userId,
+      dietaryRestrictions,
     }: {
       slotId: string;
       customerName: string;
@@ -47,6 +48,7 @@ export function useJoinWaitlist() {
       customerPhone?: string;
       partySize: number;
       userId: string;
+      dietaryRestrictions?: string;
     }) => {
       // Get the next position
       const { data: position, error: posError } = await supabase.rpc(
@@ -66,6 +68,7 @@ export function useJoinWaitlist() {
           customer_phone: customerPhone || null,
           party_size: partySize,
           position: position || 1,
+          dietary_restrictions: dietaryRestrictions || null,
         })
         .select()
         .single();

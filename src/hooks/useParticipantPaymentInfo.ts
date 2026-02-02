@@ -8,6 +8,7 @@ export interface ParticipantPaymentInfo {
   party_size: number;
   venmo_username: string | null;
   zelle_identifier: string | null;
+  dietary_restrictions: string | null;
 }
 
 export function useParticipantPaymentInfo(slotId: string | null) {

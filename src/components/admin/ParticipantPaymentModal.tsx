@@ -1,4 +1,4 @@
-import { Copy, CreditCard, Loader2, Users, X } from 'lucide-react';
+import { Copy, CreditCard, Loader2, Users, X, UtensilsCrossed } from 'lucide-react';
 import { useParticipantPaymentInfo } from '@/hooks/useParticipantPaymentInfo';
 import { Button } from '@/components/ui/button';
 import {
@@ -37,7 +37,8 @@ export function ParticipantPaymentModal({
       const paymentInfo = [];
       if (p.venmo_username) paymentInfo.push(`Venmo: @${p.venmo_username}`);
       if (p.zelle_identifier) paymentInfo.push(`Zelle: ${p.zelle_identifier}`);
-      return `${p.customer_name} (${p.party_size} guest${p.party_size > 1 ? 's' : ''}) - ${paymentInfo.join(', ') || 'No payment info'}`;
+      const dietInfo = p.dietary_restrictions ? ` | Diet: ${p.dietary_restrictions}` : '';
+      return `${p.customer_name} (${p.party_size} guest${p.party_size > 1 ? 's' : ''}) - ${paymentInfo.join(', ') || 'No payment info'}${dietInfo}`;
     });
 
     await navigator.clipboard.writeText(lines.join('\n'));
@@ -84,6 +85,12 @@ export function ParticipantPaymentModal({
                       <p className="text-sm text-muted-foreground">
                         {participant.party_size} guest{participant.party_size > 1 ? 's' : ''}
                       </p>
+                      {participant.dietary_restrictions && (
+                        <p className="flex items-center gap-1 text-sm text-amber-600 mt-1">
+                          <UtensilsCrossed className="h-3 w-3" />
+                          {participant.dietary_restrictions}
+                        </p>
+                      )}
                     </div>
                   </div>
                   

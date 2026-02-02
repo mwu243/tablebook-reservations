@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { format } from 'date-fns';
-import { CalendarIcon, Clock, Loader2, Plus, Tag, FileText, Ticket, Shuffle, Users } from 'lucide-react';
+import { CalendarIcon, Clock, Loader2, Plus, Tag, FileText, Ticket, Shuffle, Users, MapPin, DollarSign } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Input } from '@/components/ui/input';
@@ -41,7 +41,9 @@ export function AvailabilityManager() {
   const [endTime, setEndTime] = useState('19:00');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [totalSpots, setTotalSpots] = useState(1);
+  const [location, setLocation] = useState('');
+  const [estimatedCost, setEstimatedCost] = useState('');
+  const [totalSpotsInput, setTotalSpotsInput] = useState('1');
   const [bookingMode, setBookingMode] = useState<BookingMode>('fcfs');
   const [waitlistEnabled, setWaitlistEnabled] = useState(false);
   
@@ -87,16 +89,21 @@ export function AvailabilityManager() {
       return;
     }
 
+    const parsedSpots = parseInt(totalSpotsInput) || 1;
+    const parsedCost = estimatedCost ? parseFloat(estimatedCost) : null;
+
     const slot = {
       date: format(date, 'yyyy-MM-dd'),
       time: startTime,
       end_time: endTime,
-      total_tables: totalSpots,
+      total_tables: parsedSpots,
       name: name.trim() || 'Available Table',
       description: description.trim() || null,
       booking_mode: bookingMode,
       user_id: user.id,
       waitlist_enabled: waitlistEnabled,
+      location: location.trim() || null,
+      estimated_cost_per_person: parsedCost,
     };
 
     try {
@@ -108,7 +115,9 @@ export function AvailabilityManager() {
       setDate(undefined);
       setName('');
       setDescription('');
-      setTotalSpots(1);
+      setLocation('');
+      setEstimatedCost('');
+      setTotalSpotsInput('1');
       setWaitlistEnabled(false);
     } catch (error) {
       toast({
@@ -152,7 +161,33 @@ export function AvailabilityManager() {
           </div>
         </div>
 
+        {/* Location and Cost */}
         <div className="grid gap-6 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label className="flex items-center gap-1.5">
+              <MapPin className="h-4 w-4" />
+              Location (Optional)
+            </Label>
+            <Input
+              placeholder="e.g., 123 Main St, Downtown"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="flex items-center gap-1.5">
+              <DollarSign className="h-4 w-4" />
+              Est. Cost/Person (Optional)
+            </Label>
+            <Input
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="e.g., 25.00"
+              value={estimatedCost}
+              onChange={(e) => setEstimatedCost(e.target.value)}
+            />
+          </div>
           {/* Date Picker */}
           <div className="space-y-2">
             <Label className="flex items-center gap-1.5">
@@ -224,7 +259,7 @@ export function AvailabilityManager() {
             </Select>
           </div>
 
-          {/* Total Spots */}
+          {/* Total Spots - FIX: use string input to allow clearing */}
           <div className="space-y-2">
             <Label className="flex items-center gap-1.5">
               <Users className="h-4 w-4" />
@@ -234,8 +269,14 @@ export function AvailabilityManager() {
               type="number"
               min={1}
               max={100}
-              value={totalSpots}
-              onChange={(e) => setTotalSpots(Math.max(1, parseInt(e.target.value) || 1))}
+              value={totalSpotsInput}
+              onChange={(e) => setTotalSpotsInput(e.target.value)}
+              onBlur={() => {
+                const parsed = parseInt(totalSpotsInput);
+                if (isNaN(parsed) || parsed < 1) {
+                  setTotalSpotsInput('1');
+                }
+              }}
               placeholder="1"
             />
             <p className="text-xs text-muted-foreground">
@@ -318,8 +359,14 @@ export function AvailabilityManager() {
             <p className="mt-1 font-medium">
               {name.trim() || 'Available Table'}
             </p>
+            {location && (
+              <p className="mt-1 text-sm text-muted-foreground">📍 {location}</p>
+            )}
+            {estimatedCost && (
+              <p className="mt-1 text-sm text-muted-foreground">💰 ~${parseFloat(estimatedCost).toFixed(2)} per person</p>
+            )}
             <p className="mt-1 text-sm text-muted-foreground">
-              {format(date, 'MMMM d, yyyy')} • {formatTimeDisplay(startTime)} – {formatTimeDisplay(endTime)} • {totalSpots} spot{totalSpots > 1 ? 's' : ''} • {bookingMode === 'fcfs' ? 'First Come, First Served' : 'Lottery'}
+              {format(date, 'MMMM d, yyyy')} • {formatTimeDisplay(startTime)} – {formatTimeDisplay(endTime)} • {parseInt(totalSpotsInput) || 1} spot{(parseInt(totalSpotsInput) || 1) > 1 ? 's' : ''} • {bookingMode === 'fcfs' ? 'First Come, First Served' : 'Lottery'}
               {waitlistEnabled && bookingMode === 'fcfs' && ' • Waitlist enabled'}
             </p>
           </div>

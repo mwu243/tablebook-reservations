@@ -45,6 +45,8 @@ export function CustomerView() {
       created_at: '',
       user_id: event.user_id,
       waitlist_enabled: event.waitlist_enabled,
+      location: event.location ?? null,
+      estimated_cost_per_person: event.estimated_cost_per_person ?? null,
     };
 
     if (isSoldOut && event.waitlist_enabled) {

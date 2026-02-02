@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Booking } from '@/lib/types';
+import { Booking, WaitlistEntry } from '@/lib/types';
 import { useAuth } from '@/contexts/AuthContext';
 
 // Fetch all bookings for slots owned by the current user
@@ -12,7 +12,6 @@ export function useOwnerBookings() {
     queryFn: async () => {
       if (!user) return [];
 
-      // First get all slots owned by the user
       const { data: ownedSlots, error: slotsError } = await supabase
         .from('availability_slots')
         .select('id')
@@ -23,26 +22,9 @@ export function useOwnerBookings() {
 
       const slotIds = ownedSlots.map(s => s.id);
 
-      // Get bookings for those slots
       const { data, error } = await supabase
         .from('bookings')
-        .select(`
-          *,
-          availability_slots (
-            id,
-            date,
-            time,
-            end_time,
-            total_tables,
-            booked_tables,
-            name,
-            description,
-            booking_mode,
-            created_at,
-            user_id,
-            waitlist_enabled
-          )
-        `)
+        .select(`*, availability_slots (*)`)
         .in('slot_id', slotIds)
         .eq('status', 'confirmed')
         .order('created_at', { ascending: false });
@@ -64,7 +46,6 @@ export function useOwnerAllBookings() {
     queryFn: async () => {
       if (!user) return [];
 
-      // First get all slots owned by the user (no date filter)
       const { data: ownedSlots, error: slotsError } = await supabase
         .from('availability_slots')
         .select('id')
@@ -75,26 +56,9 @@ export function useOwnerAllBookings() {
 
       const slotIds = ownedSlots.map(s => s.id);
 
-      // Get all bookings for those slots (including past)
       const { data, error } = await supabase
         .from('bookings')
-        .select(`
-          *,
-          availability_slots (
-            id,
-            date,
-            time,
-            end_time,
-            total_tables,
-            booked_tables,
-            name,
-            description,
-            booking_mode,
-            created_at,
-            user_id,
-            waitlist_enabled
-          )
-        `)
+        .select(`*, availability_slots (*)`)
         .in('slot_id', slotIds)
         .eq('status', 'confirmed')
         .order('created_at', { ascending: false });
@@ -116,7 +80,6 @@ export function useOwnerLotteryBookings() {
     queryFn: async () => {
       if (!user) return [];
 
-      // First get all lottery slots owned by the user
       const { data: ownedSlots, error: slotsError } = await supabase
         .from('availability_slots')
         .select('id')
@@ -128,26 +91,9 @@ export function useOwnerLotteryBookings() {
 
       const slotIds = ownedSlots.map(s => s.id);
 
-      // Get pending lottery bookings for those slots
       const { data, error } = await supabase
         .from('bookings')
-        .select(`
-          *,
-          availability_slots (
-            id,
-            date,
-            time,
-            end_time,
-            total_tables,
-            booked_tables,
-            name,
-            description,
-            booking_mode,
-            created_at,
-            user_id,
-            waitlist_enabled
-          )
-        `)
+        .select(`*, availability_slots (*)`)
         .in('slot_id', slotIds)
         .eq('status', 'pending_lottery')
         .order('created_at', { ascending: false });
@@ -158,6 +104,40 @@ export function useOwnerLotteryBookings() {
     enabled: !!user,
     refetchInterval: 5000,
     staleTime: 0,
+  });
+}
+
+// Fetch waitlist entries for slots owned by the current user
+export function useOwnerWaitlistEntries() {
+  const { user } = useAuth();
+
+  return useQuery({
+    queryKey: ['owner-waitlist-entries', user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+
+      const { data: ownedSlots, error: slotsError } = await supabase
+        .from('availability_slots')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('waitlist_enabled', true);
+
+      if (slotsError) throw slotsError;
+      if (!ownedSlots || ownedSlots.length === 0) return [];
+
+      const slotIds = ownedSlots.map(s => s.id);
+
+      const { data, error } = await supabase
+        .from('waitlist_entries')
+        .select(`*, availability_slots (*)`)
+        .in('slot_id', slotIds)
+        .order('position', { ascending: true });
+
+      if (error) throw error;
+      return data as (WaitlistEntry & { availability_slots: any })[];
+    },
+    enabled: !!user,
+    refetchInterval: 5000,
   });
 }
 

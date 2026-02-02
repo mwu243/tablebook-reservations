@@ -10,20 +10,7 @@ export function useLotteryBookings() {
         .from('bookings')
         .select(`
           *,
-          availability_slots (
-            id,
-            date,
-            time,
-            end_time,
-            total_tables,
-            booked_tables,
-            name,
-            description,
-            booking_mode,
-            created_at,
-            user_id,
-            waitlist_enabled
-          )
+          availability_slots (*)
         `)
         .eq('status', 'pending_lottery')
         .order('created_at', { ascending: false });
@@ -32,7 +19,7 @@ export function useLotteryBookings() {
       return data as Booking[];
     },
     refetchInterval: 5000,
-    staleTime: 0, // Always consider data stale for immediate refetch
+    staleTime: 0,
   });
 }
 
@@ -41,7 +28,6 @@ export function useConfirmLotteryWinner() {
 
   return useMutation({
     mutationFn: async ({ bookingId, slotId }: { bookingId: string; slotId: string }) => {
-      // Get current slot to update booked_tables
       const { data: slot, error: slotError } = await supabase
         .from('availability_slots')
         .select('booked_tables, total_tables')
@@ -55,7 +41,6 @@ export function useConfirmLotteryWinner() {
         throw new Error('No tables available - slot is fully booked');
       }
 
-      // Update booking status to confirmed
       const { error: bookingError } = await supabase
         .from('bookings')
         .update({ status: 'confirmed' })
@@ -63,7 +48,6 @@ export function useConfirmLotteryWinner() {
 
       if (bookingError) throw bookingError;
 
-      // Increment booked_tables
       const { error: updateError } = await supabase
         .from('availability_slots')
         .update({ booked_tables: slot.booked_tables + 1 })
@@ -119,7 +103,6 @@ export function usePickRandomWinner() {
         throw new Error('No entries to pick from');
       }
 
-      // Get current slot info
       const { data: slot, error: slotError } = await supabase
         .from('availability_slots')
         .select('booked_tables, total_tables')
@@ -136,12 +119,10 @@ export function usePickRandomWinner() {
         throw new Error('No spots available for winners');
       }
 
-      // Shuffle and pick winners
       const shuffled = [...entries].sort(() => Math.random() - 0.5);
       const winners = shuffled.slice(0, actualWinnersCount);
       const losers = shuffled.slice(actualWinnersCount);
 
-      // Update winners to confirmed
       const winnerIds = winners.map(w => w.id);
       const { error: winnerError } = await supabase
         .from('bookings')
@@ -150,7 +131,6 @@ export function usePickRandomWinner() {
 
       if (winnerError) throw winnerError;
 
-      // Optionally reject others
       if (rejectOthers && losers.length > 0) {
         const loserIds = losers.map(l => l.id);
         const { error: loserError } = await supabase
@@ -161,7 +141,6 @@ export function usePickRandomWinner() {
         if (loserError) throw loserError;
       }
 
-      // Update booked_tables count
       const { error: updateError } = await supabase
         .from('availability_slots')
         .update({ booked_tables: slot.booked_tables + actualWinnersCount })

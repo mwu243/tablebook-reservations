@@ -49,6 +49,7 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [dietaryRestrictions, setDietaryRestrictions] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [nameTouched, setNameTouched] = useState(false);
   const [emailTouched, setEmailTouched] = useState(false);
@@ -152,6 +153,7 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
         prevSlotIdRef.current = slot.id;
         setNameTouched(false);
         setEmailTouched(false);
+        setDietaryRestrictions('');
       }
 
       // Always try to populate from profile/auth when modal opens
@@ -189,6 +191,7 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
           customerPhone: phone.trim() || undefined,
           partySize,
           userId,
+          dietaryRestrictions: dietaryRestrictions.trim() || undefined,
         });
 
         await Promise.all([maybePersistProfile(name.trim()), maybePersistAuthMetadata(name.trim())]);
@@ -197,6 +200,7 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
         setName('');
         setEmail('');
         setPhone('');
+        setDietaryRestrictions('');
         setSuccessDialog({ open: true, type: 'waitlist' });
       } else {
         await bookSlot.mutateAsync({
@@ -206,6 +210,7 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
           partySize,
           userId,
           isLottery,
+          dietaryRestrictions: dietaryRestrictions.trim() || undefined,
         });
 
         await Promise.all([maybePersistProfile(name.trim()), maybePersistAuthMetadata(name.trim())]);
@@ -214,6 +219,7 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
         setName('');
         setEmail('');
         setPhone('');
+        setDietaryRestrictions('');
         setSuccessDialog({ open: true, type: isLottery ? 'lottery' : 'booking' });
       }
     } catch (error) {
@@ -234,6 +240,7 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
           customerPhone: phone.trim() || undefined,
           partySize,
           userId,
+          dietaryRestrictions: dietaryRestrictions.trim() || undefined,
         });
 
         await Promise.all([maybePersistProfile(name.trim()), maybePersistAuthMetadata(name.trim())]);
@@ -248,6 +255,7 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
           partySize,
           userId,
           isLottery,
+          dietaryRestrictions: dietaryRestrictions.trim() || undefined,
         });
 
         await Promise.all([maybePersistProfile(name.trim()), maybePersistAuthMetadata(name.trim())]);
@@ -362,6 +370,12 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
             {slot.description && (
               <p className="mt-1 text-sm text-muted-foreground">{slot.description}</p>
             )}
+            {slot.location && (
+              <p className="mt-1 text-sm text-muted-foreground">📍 {slot.location}</p>
+            )}
+            {slot.estimated_cost_per_person != null && (
+              <p className="mt-1 text-sm text-muted-foreground">💰 ~${slot.estimated_cost_per_person.toFixed(2)} per person</p>
+            )}
             <div className="mt-2 flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Date</span>
               <span className="font-medium">{format(new Date(slot.date), 'EEEE, MMMM d, yyyy')}</span>
@@ -439,6 +453,16 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
                 </div>
               )}
 
+              <div className="space-y-2">
+                <Label htmlFor="dietary">Dietary Restrictions (Optional)</Label>
+                <Input
+                  id="dietary"
+                  value={dietaryRestrictions}
+                  onChange={(e) => setDietaryRestrictions(e.target.value)}
+                  placeholder="e.g., Vegetarian, Gluten-free, Nut allergy"
+                />
+              </div>
+
               <div className="flex gap-3 pt-2">
                 <Button
                   type="button"
@@ -506,9 +530,9 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
               </div>
               {isWaitlist && (
                 <div className="space-y-2">
-                  <Label htmlFor="phone">Phone Number (Optional)</Label>
+                  <Label htmlFor="phone-edit">Phone Number (Optional)</Label>
                   <Input
-                    id="phone"
+                    id="phone-edit"
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
@@ -519,6 +543,16 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
                   </p>
                 </div>
               )}
+
+              <div className="space-y-2">
+                <Label htmlFor="dietary-edit">Dietary Restrictions (Optional)</Label>
+                <Input
+                  id="dietary-edit"
+                  value={dietaryRestrictions}
+                  onChange={(e) => setDietaryRestrictions(e.target.value)}
+                  placeholder="e.g., Vegetarian, Gluten-free, Nut allergy"
+                />
+              </div>
               <div className="flex gap-3 pt-2">
                 {isEditing && hasCompleteProfile && (
                   <Button

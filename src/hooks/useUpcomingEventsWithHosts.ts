@@ -15,6 +15,8 @@ export interface UpcomingEventWithHost {
   waitlist_enabled: boolean;
   user_id: string | null;
   host_name: string | null;
+  location: string | null;
+  estimated_cost_per_person: number | null;
 }
 
 export function useUpcomingEventsWithHosts(limit = 10) {
@@ -66,6 +68,8 @@ export function useUpcomingEventsWithHosts(limit = 10) {
         waitlist_enabled: slot.waitlist_enabled,
         user_id: slot.user_id,
         host_name: slot.user_id ? hostProfiles.get(slot.user_id) || null : null,
+        location: (slot as any).location ?? null,
+        estimated_cost_per_person: (slot as any).estimated_cost_per_person ?? null,
       }));
 
       return eventsWithHosts;

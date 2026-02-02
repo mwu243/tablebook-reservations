@@ -13,6 +13,8 @@ export interface AvailabilitySlot {
   created_at: string;
   user_id: string | null;
   waitlist_enabled: boolean;
+  location?: string | null;
+  estimated_cost_per_person?: number | null;
 }
 
 export interface Booking {
@@ -23,6 +25,7 @@ export interface Booking {
   party_size: number;
   status: 'confirmed' | 'pending_lottery' | 'cancelled' | 'completed';
   created_at: string;
+  dietary_restrictions?: string | null;
   availability_slots?: AvailabilitySlot;
 }
 
@@ -37,6 +40,7 @@ export interface WaitlistEntry {
   position: number;
   created_at: string;
   notified_at: string | null;
+  dietary_restrictions?: string | null;
 }
 
 export interface UserProfile {
