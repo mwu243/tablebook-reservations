@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { Resend } from "resend";
+import { encode } from "https://deno.land/std@0.190.0/encoding/base64.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,7 +14,8 @@ interface BookingNotificationRequest {
   customerName: string;
   customerEmail: string;
   partySize: number;
-  bookingType: "booking" | "waitlist";
+  bookingType: "booking" | "waitlist" | "promotion";
+  bookingId?: string;
 }
 
 const formatDate = (dateStr: string): string => {
@@ -32,6 +34,69 @@ const formatTime = (timeStr: string): string => {
   const ampm = hour >= 12 ? "PM" : "AM";
   const hour12 = hour % 12 || 12;
   return `${hour12}:${minutes} ${ampm}`;
+};
+
+// ICS generation functions
+const formatICSDate = (dateStr: string, timeStr: string): string => {
+  const [hours, minutes] = timeStr.split(":");
+  const dateObj = new Date(`${dateStr}T${hours}:${minutes}:00`);
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${dateObj.getFullYear()}${pad(dateObj.getMonth() + 1)}${pad(dateObj.getDate())}T${pad(dateObj.getHours())}${pad(dateObj.getMinutes())}00`;
+};
+
+const escapeICSText = (text: string): string => {
+  return text
+    .replace(/\\/g, "\\\\")
+    .replace(/;/g, "\\;")
+    .replace(/,/g, "\\,")
+    .replace(/\n/g, "\\n");
+};
+
+const generateICSContent = (
+  slot: { name: string; date: string; time: string; end_time?: string | null; description?: string | null; location?: string | null },
+  bookingId: string,
+  partySize: number
+): string => {
+  const dtStart = formatICSDate(slot.date, slot.time);
+  
+  // If no end_time, default to 2 hours after start
+  let dtEnd: string;
+  if (slot.end_time) {
+    dtEnd = formatICSDate(slot.date, slot.end_time);
+  } else {
+    const [hours, minutes] = slot.time.split(":");
+    const endHour = (parseInt(hours) + 2).toString().padStart(2, "0");
+    dtEnd = formatICSDate(slot.date, `${endHour}:${minutes}`);
+  }
+
+  const now = new Date().toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+  
+  const description = slot.description 
+    ? `${escapeICSText(slot.description)}\\n\\nParty of ${partySize} guest${partySize === 1 ? "" : "s"}.`
+    : `Party of ${partySize} guest${partySize === 1 ? "" : "s"}. Hosted SGD event.`;
+
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//SGD Reservations//EN",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    "BEGIN:VEVENT",
+    `UID:booking-${bookingId}@sgd.app`,
+    `DTSTAMP:${now}`,
+    `DTSTART:${dtStart}`,
+    `DTEND:${dtEnd}`,
+    `SUMMARY:${escapeICSText(slot.name)}`,
+    `DESCRIPTION:${description}`,
+  ];
+
+  if (slot.location) {
+    lines.push(`LOCATION:${escapeICSText(slot.location)}`);
+  }
+
+  lines.push("STATUS:CONFIRMED", "END:VEVENT", "END:VCALENDAR");
+
+  return lines.join("\r\n");
 };
 
 const handler = async (req: Request): Promise<Response> => {
@@ -56,7 +121,7 @@ const handler = async (req: Request): Promise<Response> => {
     const resend = new Resend(resendApiKey);
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { slotId, customerName, customerEmail, partySize, bookingType }: BookingNotificationRequest =
+    const { slotId, customerName, customerEmail, partySize, bookingType, bookingId }: BookingNotificationRequest =
       await req.json();
 
     console.log("send-booking-notification: Processing", { slotId, customerEmail, bookingType });
@@ -92,9 +157,41 @@ const handler = async (req: Request): Promise<Response> => {
     const endTimeFormatted = slot.end_time ? ` - ${formatTime(slot.end_time)}` : "";
 
     const isWaitlist = bookingType === "waitlist";
-    const customerSubject = isWaitlist
-      ? `Waitlist Confirmed - ${slot.name}`
-      : `Reservation Confirmed - ${slot.name}`;
+    const isPromotion = bookingType === "promotion";
+
+    // Generate ICS for confirmed bookings and promotions
+    let icsContent: string | null = null;
+    let icsAttachment: { filename: string; content: string }[] = [];
+    
+    if (!isWaitlist) {
+      // Use bookingId if provided, otherwise generate a unique ID
+      const eventId = bookingId || `${slotId}-${Date.now()}`;
+      icsContent = generateICSContent(slot, eventId, partySize);
+      const safeFilename = slot.name.replace(/[^a-zA-Z0-9\s-]/g, "").replace(/\s+/g, "-");
+      icsAttachment = [{
+        filename: `${safeFilename}.ics`,
+        content: encode(new TextEncoder().encode(icsContent)),
+      }];
+    }
+
+    // Determine email subject and content based on booking type
+    let customerSubject: string;
+    let customerHeading: string;
+    let customerMessage: string;
+
+    if (isPromotion) {
+      customerSubject = `Good News! You've Got a Spot - ${slot.name}`;
+      customerHeading = "You've Been Upgraded!";
+      customerMessage = "Great news! A spot has opened up and you've been moved from the waitlist to a confirmed reservation. Here are your details:";
+    } else if (isWaitlist) {
+      customerSubject = `Waitlist Confirmed - ${slot.name}`;
+      customerHeading = "You're on the Waitlist!";
+      customerMessage = "You've been added to the waitlist. We'll notify you if a spot becomes available!";
+    } else {
+      customerSubject = `Reservation Confirmed - ${slot.name}`;
+      customerHeading = "Reservation Confirmed!";
+      customerMessage = "Your reservation has been confirmed! Here are the details:";
+    }
 
     // Send customer confirmation email
     const customerEmailHtml = `
@@ -112,18 +209,17 @@ const handler = async (req: Request): Promise<Response> => {
             .label { color: #666; }
             .value { font-weight: 600; }
             .footer { text-align: center; color: #666; font-size: 14px; margin-top: 20px; }
+            .calendar-note { background: #e0e7ff; padding: 15px; border-radius: 8px; margin-top: 20px; text-align: center; }
           </style>
         </head>
         <body>
           <div class="container">
             <div class="header">
-              <h1 style="margin: 0;">${isWaitlist ? "You're on the Waitlist!" : "Reservation Confirmed!"}</h1>
+              <h1 style="margin: 0;">${customerHeading}</h1>
             </div>
             <div class="content">
               <p>Hi ${customerName},</p>
-              <p>${isWaitlist 
-                ? "You've been added to the waitlist. We'll notify you if a spot becomes available!" 
-                : "Your reservation has been confirmed! Here are the details:"}</p>
+              <p>${customerMessage}</p>
               
               <div class="details">
                 <div class="detail-row">
@@ -144,6 +240,13 @@ const handler = async (req: Request): Promise<Response> => {
                 </div>
               </div>
               
+              ${!isWaitlist ? `
+              <div class="calendar-note">
+                <p style="margin: 0;"><strong>📅 Calendar Invite Attached</strong></p>
+                <p style="margin: 5px 0 0 0; font-size: 14px;">Open the attached .ics file to add this event to your calendar.</p>
+              </div>
+              ` : ""}
+              
               <p>We look forward to seeing you!</p>
               
               <div class="footer">
@@ -157,12 +260,24 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log("send-booking-notification: Sending customer email to", customerEmail);
     
-    const { error: customerEmailError } = await resend.emails.send({
+    const emailPayload: {
+      from: string;
+      to: string[];
+      subject: string;
+      html: string;
+      attachments?: { filename: string; content: string }[];
+    } = {
       from: "Reservations <onboarding@resend.dev>",
       to: [customerEmail],
       subject: customerSubject,
       html: customerEmailHtml,
-    });
+    };
+
+    if (icsAttachment.length > 0) {
+      emailPayload.attachments = icsAttachment;
+    }
+
+    const { error: customerEmailError } = await resend.emails.send(emailPayload);
 
     if (customerEmailError) {
       console.error("send-booking-notification: Customer email failed", customerEmailError);
@@ -170,8 +285,8 @@ const handler = async (req: Request): Promise<Response> => {
       console.log("send-booking-notification: Customer email sent successfully");
     }
 
-    // Send host notification email
-    if (hostEmail) {
+    // Send host notification email (skip for promotions since the host already knows about the cancellation)
+    if (hostEmail && !isPromotion) {
       const hostSubject = isWaitlist
         ? `New Waitlist Entry - ${slot.name}`
         : `New Reservation - ${slot.name}`;
@@ -243,7 +358,7 @@ const handler = async (req: Request): Promise<Response> => {
       } else {
         console.log("send-booking-notification: Host email sent successfully");
       }
-    } else {
+    } else if (!hostEmail) {
       console.log("send-booking-notification: No host email found, skipping host notification");
     }
 

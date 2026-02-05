@@ -9,7 +9,6 @@ import { BookingModal } from './BookingModal';
 import { MyReservations } from './MyReservations';
 import { UpcomingEventsList } from './UpcomingEventsList';
 import { AvailabilityManager } from '@/components/admin/AvailabilityManager';
-import { SlotsManager } from '@/components/admin/SlotsManager';
 import { LotteryManager } from '@/components/admin/LotteryManager';
 import { ReservationsList } from '@/components/admin/ReservationsList';
 import { useAuth } from '@/contexts/AuthContext';
@@ -19,7 +18,7 @@ import type { UpcomingEventWithHost } from '@/hooks/useUpcomingEventsWithHosts';
 export function CustomerView() {
   const { user, isAdmin } = useAuth();
   const [date, setDate] = useState<Date | undefined>(undefined);
-  const [partySize, setPartySize] = useState(2);
+  const [partySize, setPartySize] = useState(1);
   const [mealTime, setMealTime] = useState<MealTime>('all');
   const [selectedSlot, setSelectedSlot] = useState<AvailabilitySlot | null>(null);
   const [isWaitlistMode, setIsWaitlistMode] = useState(false);
@@ -148,9 +147,8 @@ export function CustomerView() {
             <TabsContent value="manage" className="mt-8">
               <div className="mx-auto max-w-4xl space-y-8">
                 <AvailabilityManager />
-                <SlotsManager />
-                <LotteryManager />
                 <ReservationsList />
+                <LotteryManager />
               </div>
             </TabsContent>
           </Tabs>
