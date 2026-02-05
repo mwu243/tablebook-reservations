@@ -136,9 +136,36 @@ export function useCancelBooking() {
 
       if (error) throw error;
       
-      const result = data as { success: boolean; error?: string; promoted?: boolean };
+      const result = data as { 
+        success: boolean; 
+        error?: string; 
+        promoted?: boolean;
+        slot_id?: string;
+        promoted_customer?: {
+          name: string;
+          email: string;
+          party_size: number;
+        };
+      };
       if (!result.success) {
         throw new Error(result.error || 'Failed to cancel booking');
+      }
+      
+      // If someone was promoted from the waitlist, send them a notification
+      if (result.promoted && result.promoted_customer && result.slot_id) {
+        supabase.functions.invoke('send-booking-notification', {
+          body: {
+            slotId: result.slot_id,
+            customerName: result.promoted_customer.name,
+            customerEmail: result.promoted_customer.email,
+            partySize: result.promoted_customer.party_size,
+            bookingType: 'promotion',
+          },
+        }).then(({ error: notifError }) => {
+          if (notifError) {
+            console.error('Failed to send promotion notification:', notifError);
+          }
+        });
       }
       
       return result;

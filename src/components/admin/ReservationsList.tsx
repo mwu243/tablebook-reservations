@@ -1,12 +1,26 @@
 import { useState } from 'react';
-import { format, isPast, parseISO } from 'date-fns';
-import { CalendarCheck, CreditCard, Loader2, Users, History, Calendar, Clock, UtensilsCrossed } from 'lucide-react';
+import { format, parseISO } from 'date-fns';
+import { CalendarCheck, CreditCard, Loader2, Users, History, Calendar, Clock, UtensilsCrossed, Pencil, Trash2 } from 'lucide-react';
 import { useOwnerAllBookings, useOwnerWaitlistEntries } from '@/hooks/useOwnerBookings';
+import { useUserOwnedSlots } from '@/hooks/useUserOwnedSlots';
+import { useDeleteAvailabilitySlot } from '@/hooks/useAvailabilitySlots';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { ParticipantPaymentModal } from './ParticipantPaymentModal';
-import type { Booking, WaitlistEntry } from '@/lib/types';
+import { EditSlotModal } from './EditSlotModal';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { toast } from 'sonner';
+import type { AvailabilitySlot } from '@/lib/types';
 
 interface BookingWithSlot {
   id: string;
@@ -19,8 +33,12 @@ interface BookingWithSlot {
     id: string;
     date: string;
     time: string;
+    end_time?: string | null;
     name: string;
     waitlist_enabled?: boolean;
+    booking_mode?: string;
+    total_tables?: number;
+    booked_tables?: number;
   } | null;
 }
 
@@ -45,14 +63,22 @@ interface GroupedBookings {
   slotName: string;
   date: string;
   time: string;
+  endTime?: string | null;
   waitlistEnabled: boolean;
+  bookingMode: string;
+  totalTables: number;
+  bookedTables: number;
   bookings: BookingWithSlot[];
   waitlist: WaitlistWithSlot[];
+  slot?: AvailabilitySlot;
 }
 
 export function ReservationsList() {
   const { data: allBookings, isLoading: loadingBookings } = useOwnerAllBookings();
   const { data: allWaitlist, isLoading: loadingWaitlist } = useOwnerWaitlistEntries();
+  const { data: ownedSlots, isLoading: loadingSlots } = useUserOwnedSlots();
+  const deleteSlot = useDeleteAvailabilitySlot();
+  
   const [paymentModal, setPaymentModal] = useState<{
     open: boolean;
     slotId: string | null;
@@ -61,6 +87,22 @@ export function ReservationsList() {
     open: false,
     slotId: null,
     slotName: '',
+  });
+
+  const [editDialog, setEditDialog] = useState<{
+    open: boolean;
+    slot: AvailabilitySlot | null;
+  }>({
+    open: false,
+    slot: null,
+  });
+
+  const [deleteDialog, setDeleteDialog] = useState<{
+    open: boolean;
+    slot: AvailabilitySlot | null;
+  }>({
+    open: false,
+    slot: null,
   });
 
   const formatTime = (time: string) => {
@@ -78,7 +120,19 @@ export function ReservationsList() {
     return eventDate < today;
   };
 
-  const isLoading = loadingBookings || loadingWaitlist;
+  const handleDeleteSlot = async () => {
+    if (!deleteDialog.slot) return;
+
+    try {
+      await deleteSlot.mutateAsync(deleteDialog.slot.id);
+      toast.success('Slot and associated bookings cancelled.');
+      setDeleteDialog({ open: false, slot: null });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to delete slot');
+    }
+  };
+
+  const isLoading = loadingBookings || loadingWaitlist || loadingSlots;
 
   if (isLoading) {
     return (
@@ -99,9 +153,29 @@ export function ReservationsList() {
   const pastBookings = validBookings.filter(b => isEventPast(b.availability_slots!.date));
   const upcomingWaitlist = validWaitlist.filter(w => !isEventPast(w.availability_slots!.date));
 
-  // Group bookings by slot
-  const groupBookings = (bookingsList: BookingWithSlot[], waitlistList: WaitlistWithSlot[]): GroupedBookings[] => {
+  // Group bookings by slot, merging with owned slots to show events with 0 bookings
+  const groupBookings = (bookingsList: BookingWithSlot[], waitlistList: WaitlistWithSlot[], includeEmptySlots: boolean): GroupedBookings[] => {
     const grouped: Record<string, GroupedBookings> = {};
+
+    // First, add all owned slots (for upcoming tab only)
+    if (includeEmptySlots && ownedSlots) {
+      ownedSlots.forEach((slot) => {
+        grouped[slot.id] = {
+          slotId: slot.id,
+          slotName: slot.name,
+          date: slot.date,
+          time: slot.time,
+          endTime: slot.end_time,
+          waitlistEnabled: slot.waitlist_enabled ?? false,
+          bookingMode: slot.booking_mode,
+          totalTables: slot.total_tables,
+          bookedTables: slot.booked_tables,
+          bookings: [],
+          waitlist: [],
+          slot: slot,
+        };
+      });
+    }
 
     bookingsList.forEach((booking) => {
       const slotId = booking.slot_id;
@@ -111,7 +185,11 @@ export function ReservationsList() {
           slotName: booking.availability_slots!.name,
           date: booking.availability_slots!.date,
           time: booking.availability_slots!.time,
+          endTime: booking.availability_slots!.end_time,
           waitlistEnabled: booking.availability_slots!.waitlist_enabled ?? false,
+          bookingMode: booking.availability_slots!.booking_mode || 'fcfs',
+          totalTables: booking.availability_slots!.total_tables || 0,
+          bookedTables: booking.availability_slots!.booked_tables || 0,
           bookings: [],
           waitlist: [],
         };
@@ -128,6 +206,9 @@ export function ReservationsList() {
           date: entry.availability_slots!.date,
           time: entry.availability_slots!.time,
           waitlistEnabled: true,
+          bookingMode: 'fcfs',
+          totalTables: 0,
+          bookedTables: 0,
           bookings: [],
           waitlist: [],
         };
@@ -142,8 +223,8 @@ export function ReservationsList() {
     });
   };
 
-  const upcomingGrouped = groupBookings(upcomingBookings, upcomingWaitlist);
-  const pastGrouped = groupBookings(pastBookings, []).reverse();
+  const upcomingGrouped = groupBookings(upcomingBookings, upcomingWaitlist, true);
+  const pastGrouped = groupBookings(pastBookings, [], false).reverse();
 
   const renderBookingItem = (booking: BookingWithSlot) => (
     <div
@@ -197,37 +278,92 @@ export function ReservationsList() {
   const GroupedSlotCard = ({ group, isPast }: { group: GroupedBookings; isPast: boolean }) => {
     const [activeSubTab, setActiveSubTab] = useState<'confirmed' | 'waitlist'>('confirmed');
 
+    const handleEditClick = () => {
+      if (group.slot) {
+        setEditDialog({ open: true, slot: group.slot });
+      }
+    };
+
+    const handleDeleteClick = () => {
+      if (group.slot) {
+        setDeleteDialog({ open: true, slot: group.slot });
+      }
+    };
+
     return (
       <div className="space-y-3">
         {/* Slot Header */}
         <div className="flex items-center justify-between border-b pb-2">
           <div className="flex items-center gap-2">
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="font-medium">{group.slotName}</h3>
+                <Badge variant={group.bookingMode === 'lottery' ? 'default' : 'secondary'}>
+                  {group.bookingMode === 'lottery' ? 'Lottery' : 'FCFS'}
+                </Badge>
+                {group.waitlistEnabled && (
+                  <Badge variant="outline" className="text-xs">
+                    Waitlist
+                  </Badge>
+                )}
                 {isPast && (
                   <Badge variant="secondary" className="text-xs">
                     Past Event
                   </Badge>
                 )}
               </div>
-              <p className="text-sm text-muted-foreground">
-                {format(new Date(group.date), 'MMM d, yyyy')} at {formatTime(group.time)}
-              </p>
+              <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
+                <span className="flex items-center gap-1">
+                  <Calendar className="h-3.5 w-3.5" />
+                  {format(new Date(group.date), 'MMM d, yyyy')}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Clock className="h-3.5 w-3.5" />
+                  {formatTime(group.time)}
+                  {group.endTime && ` - ${formatTime(group.endTime)}`}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Users className="h-3.5 w-3.5" />
+                  {group.bookedTables}/{group.totalTables} booked
+                </span>
+              </div>
             </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setPaymentModal({
-              open: true,
-              slotId: group.slotId,
-              slotName: group.slotName,
-            })}
-          >
-            <CreditCard className="mr-2 h-4 w-4" />
-            Payment Info
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPaymentModal({
+                open: true,
+                slotId: group.slotId,
+                slotName: group.slotName,
+              })}
+            >
+              <CreditCard className="mr-2 h-4 w-4" />
+              Payment Info
+            </Button>
+            {!isPast && group.slot && (
+              <>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={handleEditClick}
+                  title="Edit event"
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={handleDeleteClick}
+                  title="Delete event"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Sub-tabs for Confirmed vs Waitlist */}
@@ -279,7 +415,7 @@ export function ReservationsList() {
           ) : (
             <>
               <CalendarCheck className="mx-auto h-10 w-10 text-muted-foreground/50" />
-              <p className="mt-3 text-muted-foreground">No upcoming reservations for your events</p>
+              <p className="mt-3 text-muted-foreground">No upcoming events. Create one using the form above!</p>
             </>
           )}
         </div>
@@ -298,7 +434,7 @@ export function ReservationsList() {
   return (
     <>
       <div className="admin-card">
-        <h2 className="mb-6 text-xl font-semibold">Reservations for Your Events</h2>
+        <h2 className="mb-6 text-xl font-semibold">Your Events & Reservations</h2>
         
         <Tabs defaultValue="upcoming" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
@@ -326,6 +462,60 @@ export function ReservationsList() {
         slotId={paymentModal.slotId}
         slotName={paymentModal.slotName}
       />
+
+      {/* Edit Slot Modal */}
+      <EditSlotModal
+        open={editDialog.open}
+        onOpenChange={(open) => !open && setEditDialog({ open: false, slot: null })}
+        slot={editDialog.slot}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog 
+        open={deleteDialog.open} 
+        onOpenChange={(open) => !open && setDeleteDialog({ open: false, slot: null })}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel this time slot?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  This will permanently remove the{' '}
+                  <strong>{deleteDialog.slot && formatTime(deleteDialog.slot.time)}</strong> slot on{' '}
+                  <strong>
+                    {deleteDialog.slot && format(new Date(deleteDialog.slot.date), 'MMMM d, yyyy')}
+                  </strong>.
+                </p>
+                {deleteDialog.slot && deleteDialog.slot.booked_tables > 0 && (
+                  <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                    <strong>Warning:</strong> This slot has {deleteDialog.slot.booked_tables} existing{' '}
+                    {deleteDialog.slot.booked_tables === 1 ? 'booking' : 'bookings'} that will be cancelled.
+                  </div>
+                )}
+                <p className="text-sm text-muted-foreground">
+                  If there are any existing bookings or lottery entries, they will be cancelled.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep Slot</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteSlot}
+              disabled={deleteSlot.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteSlot.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="mr-2 h-4 w-4" />
+              )}
+              Yes, Delete Everything
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
