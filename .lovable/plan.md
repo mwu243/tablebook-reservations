@@ -1,208 +1,166 @@
 
 
-## Event and Reservation Enhancements
+# Implementation Plan: Four Feature Updates
 
-This plan addresses four key improvements:
-
-1. **Location and Cost Fields** for event creation
-2. **Dietary Restrictions** field for reservations (visible to event owners)
-3. **Confirmed vs Waitlist Lists** for event owners
-4. **Fix Available Spots Input Bug**
+## Overview
+This plan addresses four feature requests to improve the reservation system's usability and functionality.
 
 ---
 
-### Issue 1: Add Location and Estimated Cost Fields to Events
+## Feature 1: Default Party Size to 1 (Not 2)
 
-#### What You'll See
-When creating or editing an event, two new optional fields will appear:
-- **Location**: Text field for the venue/address
-- **Estimated Cost per Person**: Currency input (e.g., "$25")
+**Current Behavior**: The party size defaults to 2 guests when opening the booking flow.
 
-These will display on event cards in the Upcoming Events list and in booking confirmations.
+**Change Required**: Update the initial state in `CustomerView.tsx` from `useState(2)` to `useState(1)`.
 
-#### Technical Details
-
-| Component | Change |
-|-----------|--------|
-| **Database** | Add `location` (text, nullable) and `estimated_cost_per_person` (numeric, nullable) columns to `availability_slots` table |
-| `src/lib/types.ts` | Update `AvailabilitySlot` interface with new fields |
-| `src/components/admin/AvailabilityManager.tsx` | Add location and cost input fields to creation form |
-| `src/components/admin/EditSlotModal.tsx` | Add location and cost input fields to edit form |
-| `src/components/customer/EventCard.tsx` | Display location and cost on event cards |
-| `src/components/customer/BookingModal.tsx` | Show location and cost in booking confirmation |
+**File**: `src/components/customer/CustomerView.tsx`
+- Line 22: Change `const [partySize, setPartySize] = useState(2);` to `useState(1)`
 
 ---
 
-### Issue 2: Dietary Restrictions for Reservations
+## Feature 2: Add Calendar Invite (.ics) to Confirmation Emails
 
-#### What You'll See
-**For Users (when booking):**
-- New text field: "Dietary Restrictions (optional)" with placeholder text like "e.g., Vegetarian, Gluten-free, Nut allergy"
+**Current Behavior**: Confirmation emails are sent without calendar attachments. Users can manually download .ics files from the "My Reservations" page.
 
-**For Event Owners (in Reservations list):**
-- Each participant's dietary restrictions displayed alongside their booking info
+**Change Required**: Generate and attach an .ics file directly in the confirmation email so users can add events to their calendar with one click.
 
-#### Technical Details
+**Technical Approach**:
+1. Add ICS generation logic to the Edge Function (port the logic from `src/lib/icsGenerator.ts`)
+2. Attach the .ics file to the customer confirmation email using Resend's attachment API
 
-| Component | Change |
-|-----------|--------|
-| **Database** | Add `dietary_restrictions` (text, nullable) column to `bookings` table |
-| `src/components/customer/BookingModal.tsx` | Add dietary restrictions input field |
-| `src/hooks/useAvailabilitySlots.ts` | Pass dietary restrictions in booking mutation |
-| `src/hooks/useWaitlist.ts` | Pass dietary restrictions when joining waitlist |
-| `src/components/admin/ReservationsList.tsx` | Display dietary restrictions for each booking |
-| **Waitlist table** | Add `dietary_restrictions` column to `waitlist_entries` |
-| `get_participant_payment_info` RPC | Update to include dietary_restrictions |
+**File**: `supabase/functions/send-booking-notification/index.ts`
+- Add ICS generation functions (`formatICSDate`, `escapeICSText`, `generateICSContent`)
+- Modify the customer email send call to include an attachment:
+  ```typescript
+  attachments: [{
+    filename: 'event.ics',
+    content: Buffer.from(icsContent).toString('base64'),
+    contentType: 'text/calendar',
+  }]
+  ```
 
----
-
-### Issue 3: Separate Confirmed and Waitlist Views for Event Owners
-
-#### What You'll See
-In the "Reservations for Your Events" section, each event will show:
-- **Confirmed Guests** tab with count badge
-- **Waitlist** tab with count badge (only if waitlist is enabled)
-
-Each list shows the attendee name, email, party size, and dietary restrictions.
-
-#### Technical Details
-
-| Component | Change |
-|-----------|--------|
-| `src/hooks/useOwnerBookings.ts` | Add `useOwnerWaitlistEntries()` hook to fetch waitlist for owned slots |
-| `src/components/admin/ReservationsList.tsx` | Add sub-tabs per event showing "Confirmed" and "Waitlist" with counts |
+**Note**: The .ics attachment will only be added for confirmed bookings (not waitlist entries).
 
 ---
 
-### Issue 4: Fix "Available Spots" Input Bug
+## Feature 3: Ensure Waitlist Promotion Notifications Are Sent
 
-#### The Problem
-The current implementation uses:
-```typescript
-onChange={(e) => setTotalSpots(Math.max(1, parseInt(e.target.value) || 1))}
-```
+**Current Behavior**: When a booking is cancelled and someone is promoted from the waitlist, the database function `cancel_booking_with_waitlist` returns the promoted customer's details. However, there is no client-side code to trigger a notification email for the promoted person.
 
-This prevents the user from clearing the field to type a new number because:
-- When user selects "1" and tries to delete it, the field becomes empty
-- `parseInt('')` returns `NaN`
-- `NaN || 1` evaluates to `1`
-- So the field snaps back to "1" immediately
+**Change Required**: After a successful cancellation that results in a waitlist promotion, trigger the notification Edge Function to email the promoted customer.
 
-#### The Fix
-Allow the input to be empty during editing, only enforcing minimum on blur or submit:
-```typescript
-const [totalSpotsInput, setTotalSpotsInput] = useState('1');
+**Technical Approach**:
+1. Update the `useCancelBooking` hook in `src/hooks/useWaitlist.ts` to check the RPC result
+2. If `result.promoted === true`, call the Edge Function with the promoted customer's details
 
-// On change: allow any value including empty
-onChange={(e) => setTotalSpotsInput(e.target.value)}
-
-// On blur: enforce minimum
-onBlur={() => {
-  const parsed = parseInt(totalSpotsInput);
-  if (isNaN(parsed) || parsed < 1) {
-    setTotalSpotsInput('1');
+**File**: `src/hooks/useWaitlist.ts`
+- In `useCancelBooking`, after the RPC call succeeds:
+  ```typescript
+  if (result.promoted && result.promoted_customer && result.slot_id) {
+    supabase.functions.invoke('send-booking-notification', {
+      body: {
+        slotId: result.slot_id,
+        customerName: result.promoted_customer.name,
+        customerEmail: result.promoted_customer.email,
+        partySize: 1, // Could also be included in the promoted result
+        bookingType: 'promotion', // New booking type for special messaging
+      },
+    });
   }
-}}
-```
+  ```
 
-#### Files to Update
-- `src/components/admin/AvailabilityManager.tsx` - Fix the Available Spots input
-- `src/components/admin/EditSlotModal.tsx` - Fix the Total Spots input
-
----
-
-### Summary of Changes
-
-| File | Action | Purpose |
-|------|--------|---------|
-| **Database Migration** | Create | Add `location`, `estimated_cost_per_person` to `availability_slots`; Add `dietary_restrictions` to `bookings` and `waitlist_entries` |
-| `src/lib/types.ts` | Modify | Add new fields to types |
-| `src/components/admin/AvailabilityManager.tsx` | Modify | Add location/cost fields, fix spots bug |
-| `src/components/admin/EditSlotModal.tsx` | Modify | Add location/cost fields, fix spots bug |
-| `src/components/customer/BookingModal.tsx` | Modify | Add dietary restrictions field, show location/cost |
-| `src/hooks/useAvailabilitySlots.ts` | Modify | Include dietary restrictions in booking |
-| `src/hooks/useWaitlist.ts` | Modify | Include dietary restrictions in waitlist join |
-| `src/hooks/useOwnerBookings.ts` | Modify | Add waitlist query for owned slots, include dietary restrictions |
-| `src/components/admin/ReservationsList.tsx` | Modify | Show confirmed vs waitlist tabs, display dietary restrictions |
-| `src/components/customer/EventCard.tsx` | Modify | Display location and cost |
-| `get_participant_payment_info` RPC | Update | Return dietary_restrictions |
+**Edge Function Update**: `supabase/functions/send-booking-notification/index.ts`
+- Add handling for `bookingType: 'promotion'` with a special email template:
+  - Subject: "Good News! You've Got a Spot - [Event Name]"
+  - Content: Congratulates the user on being promoted from the waitlist, includes event details and the .ics attachment
 
 ---
 
-### Database Schema Changes
+## Feature 4: Remove Duplicative "Your Upcoming Slots" Section
 
-```text
-availability_slots
-├── location (text, nullable) - NEW
-└── estimated_cost_per_person (numeric, nullable) - NEW
+**Analysis of the Duplication**:
+- **"Your Upcoming Slots" (SlotsManager.tsx)**: Lists the host's created events with edit/delete controls and booking counts
+- **"Reservations for Your Events" (ReservationsList.tsx)**: Lists the same events but shows detailed guest lists, payment info access, and confirmed/waitlist sub-tabs
 
-bookings
-└── dietary_restrictions (text, nullable) - NEW
+**Why Both Exist**: The SlotsManager focuses on event management (editing/deleting), while ReservationsList focuses on guest management.
 
-waitlist_entries
-└── dietary_restrictions (text, nullable) - NEW
-```
+**Recommendation**: Merge the edit/delete controls into ReservationsList so hosts have a single unified view. This eliminates the need for SlotsManager in the "Create & Manage SGD" tab.
+
+**Changes Required**:
+1. **Remove SlotsManager from the UI** in `src/components/customer/CustomerView.tsx` (line 151)
+2. **Add edit/delete buttons to ReservationsList.tsx** in the slot header area
+3. **Update ReservationsList to show slots even with 0 bookings** (currently it only shows slots that have bookings or waitlist entries)
+
+**Files to Modify**:
+- `src/components/customer/CustomerView.tsx` - Remove `<SlotsManager />` import and usage
+- `src/components/admin/AdminView.tsx` - Remove `<SlotsManager />` import and usage  
+- `src/components/admin/ReservationsList.tsx` - Add edit/delete controls and show all user slots
+
+**ReservationsList Enhancements**:
+- Import `EditSlotModal`, `useDeleteAvailabilitySlot`, and `useUserOwnedSlots`
+- Merge user-owned slots with booking data so events with 0 reservations still appear
+- Add Pencil/Trash buttons in the slot header (similar to SlotsManager)
 
 ---
 
-### User Interface Flow
+## Summary of Changes
 
-**Event Creation (Host):**
-```text
-┌─────────────────────────────────────────┐
-│ Create Availability                      │
-├─────────────────────────────────────────┤
-│ Event Name: [Wine Tasting Evening    ]  │
-│ Description: [Premium wine selection ]  │
-│                                         │
-│ Location (optional):                    │
-│ [123 Main St, Downtown              ]   │
-│                                         │
-│ Est. Cost/Person (optional):            │
-│ [$25.00                             ]   │
-│                                         │
-│ Date: [Feb 5, 2026  ]                   │
-│ Start: [6:30 PM] End: [8:30 PM]         │
-│ Available Spots: [8            ]        │
-│                                         │
-│ [Create Availability]                   │
-└─────────────────────────────────────────┘
+| File | Change |
+|------|--------|
+| `src/components/customer/CustomerView.tsx` | Change default partySize from 2 to 1; Remove SlotsManager |
+| `src/components/admin/AdminView.tsx` | Remove SlotsManager |
+| `supabase/functions/send-booking-notification/index.ts` | Add ICS generation and email attachment; Add promotion email template |
+| `src/hooks/useWaitlist.ts` | Trigger promotion notification on successful waitlist bump |
+| `src/components/admin/ReservationsList.tsx` | Add edit/delete controls; Show all user slots (even with 0 bookings) |
+| `src/components/admin/SlotsManager.tsx` | (No changes - will no longer be used in main UI but file remains for potential future use) |
+
+---
+
+## Technical Details
+
+### ICS Content for Edge Function
+```typescript
+function generateICSContent(slot: any, bookingId: string, partySize: number): string {
+  const formatICSDate = (date: string, time: string) => {
+    const [hours, minutes] = time.split(':');
+    const dateObj = new Date(`${date}T${hours}:${minutes}:00`);
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${dateObj.getFullYear()}${pad(dateObj.getMonth()+1)}${pad(dateObj.getDate())}T${pad(dateObj.getHours())}${pad(dateObj.getMinutes())}00`;
+  };
+  
+  const dtStart = formatICSDate(slot.date, slot.time);
+  const dtEnd = slot.end_time 
+    ? formatICSDate(slot.date, slot.end_time)
+    : formatICSDate(slot.date, `${(parseInt(slot.time.split(':')[0]) + 2).toString().padStart(2, '0')}:${slot.time.split(':')[1]}`);
+  
+  return [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//SGD Reservations//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'BEGIN:VEVENT',
+    `UID:booking-${bookingId}@sgd.app`,
+    `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
+    `DTSTART:${dtStart}`,
+    `DTEND:${dtEnd}`,
+    `SUMMARY:${slot.name}`,
+    `DESCRIPTION:Party of ${partySize} guests. Hosted SGD event.`,
+    'STATUS:CONFIRMED',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\r\n');
+}
 ```
 
-**Booking (Customer):**
-```text
-┌─────────────────────────────────────────┐
-│ Complete Your Reservation               │
-├─────────────────────────────────────────┤
-│ Wine Tasting Evening                    │
-│ 📍 123 Main St, Downtown                │
-│ 💰 ~$25 per person                      │
-│ Feb 5, 2026 · 6:30 PM                   │
-├─────────────────────────────────────────┤
-│ Booking as: John Doe                    │
-│             john@email.com              │
-│                                         │
-│ Dietary Restrictions (optional):        │
-│ [Vegetarian, no shellfish          ]   │
-│                                         │
-│ [Cancel]            [Confirm Booking]   │
-└─────────────────────────────────────────┘
-```
+### Resend Attachment Format
+```typescript
+import { encode } from "https://deno.land/std@0.190.0/encoding/base64.ts";
 
-**Host View - Reservations:**
-```text
-┌─────────────────────────────────────────┐
-│ Wine Tasting Evening - Feb 5            │
-│ ┌───────────────┬────────────────┐      │
-│ │ Confirmed (6) │ Waitlist (2)   │      │
-│ └───────────────┴────────────────┘      │
-├─────────────────────────────────────────┤
-│ ✓ John Doe - john@email.com             │
-│   Party: 2 | Diet: Vegetarian           │
-│                                         │
-│ ✓ Jane Smith - jane@email.com           │
-│   Party: 1 | Diet: Gluten-free          │
-│ ...                                     │
-└─────────────────────────────────────────┘
+// In the email send call:
+attachments: [{
+  filename: `${slot.name.replace(/[^a-zA-Z0-9]/g, '-')}.ics`,
+  content: encode(new TextEncoder().encode(icsContent)),
+}]
 ```
 
