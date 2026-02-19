@@ -1,166 +1,131 @@
 
 
-# Implementation Plan: Four Feature Updates
+# Webhook Integration with Consent-Based Data Sharing
 
 ## Overview
-This plan addresses four feature requests to improve the reservation system's usability and functionality.
+Add a secure webhook system that lets event hosts manually send participant payment information (Name, Venmo/Zelle, Email) to a configurable bill-splitting app (e.g., Kanyon). Users must explicitly opt in during signup to allow their data to be shared.
 
 ---
 
-## Feature 1: Default Party Size to 1 (Not 2)
+## Part 1: Consent Checkbox During Signup
 
-**Current Behavior**: The party size defaults to 2 guests when opening the booking flow.
+**What changes for users**: A new checkbox appears on the signup form saying something like:
+> "I consent to sharing my name, email, and payment info (Venmo/Zelle) with event hosts for bill-splitting purposes."
 
-**Change Required**: Update the initial state in `CustomerView.tsx` from `useState(2)` to `useState(1)`.
+The checkbox must be checked to create an account. This consent is stored securely in the database.
 
-**File**: `src/components/customer/CustomerView.tsx`
-- Line 22: Change `const [partySize, setPartySize] = useState(2);` to `useState(1)`
+**Database change**: Add a `payment_sharing_consent` boolean column to the `user_profiles` table (default `false`).
 
----
-
-## Feature 2: Add Calendar Invite (.ics) to Confirmation Emails
-
-**Current Behavior**: Confirmation emails are sent without calendar attachments. Users can manually download .ics files from the "My Reservations" page.
-
-**Change Required**: Generate and attach an .ics file directly in the confirmation email so users can add events to their calendar with one click.
-
-**Technical Approach**:
-1. Add ICS generation logic to the Edge Function (port the logic from `src/lib/icsGenerator.ts`)
-2. Attach the .ics file to the customer confirmation email using Resend's attachment API
-
-**File**: `supabase/functions/send-booking-notification/index.ts`
-- Add ICS generation functions (`formatICSDate`, `escapeICSText`, `generateICSContent`)
-- Modify the customer email send call to include an attachment:
-  ```typescript
-  attachments: [{
-    filename: 'event.ics',
-    content: Buffer.from(icsContent).toString('base64'),
-    contentType: 'text/calendar',
-  }]
-  ```
-
-**Note**: The .ics attachment will only be added for confirmed bookings (not waitlist entries).
+**Files modified**:
+- `src/pages/Auth.tsx` -- Add checkbox UI and validation (signup blocked if unchecked)
+- `src/contexts/AuthContext.tsx` -- Pass consent flag through to profile creation
 
 ---
 
-## Feature 3: Ensure Waitlist Promotion Notifications Are Sent
+## Part 2: Webhook Configuration (Admin/Host Side)
 
-**Current Behavior**: When a booking is cancelled and someone is promoted from the waitlist, the database function `cancel_booking_with_waitlist` returns the promoted customer's details. However, there is no client-side code to trigger a notification email for the promoted person.
+**What changes for hosts**: A new "Webhook Settings" section in the host management area where they can:
+1. Enter their Kanyon (or any) webhook URL
+2. Save it securely
 
-**Change Required**: After a successful cancellation that results in a waitlist promotion, trigger the notification Edge Function to email the promoted customer.
+**Database change**: Add a `webhook_url` column to the `user_profiles` table (nullable text). This stores the host's configured webhook endpoint.
 
-**Technical Approach**:
-1. Update the `useCancelBooking` hook in `src/hooks/useWaitlist.ts` to check the RPC result
-2. If `result.promoted === true`, call the Edge Function with the promoted customer's details
+**RLS**: Already secured -- users can only update their own profile.
 
-**File**: `src/hooks/useWaitlist.ts`
-- In `useCancelBooking`, after the RPC call succeeds:
-  ```typescript
-  if (result.promoted && result.promoted_customer && result.slot_id) {
-    supabase.functions.invoke('send-booking-notification', {
-      body: {
-        slotId: result.slot_id,
-        customerName: result.promoted_customer.name,
-        customerEmail: result.promoted_customer.email,
-        partySize: 1, // Could also be included in the promoted result
-        bookingType: 'promotion', // New booking type for special messaging
-      },
-    });
-  }
-  ```
-
-**Edge Function Update**: `supabase/functions/send-booking-notification/index.ts`
-- Add handling for `bookingType: 'promotion'` with a special email template:
-  - Subject: "Good News! You've Got a Spot - [Event Name]"
-  - Content: Congratulates the user on being promoted from the waitlist, includes event details and the .ics attachment
+**Files modified**:
+- `src/components/admin/ReservationsList.tsx` -- Add a "Webhook Settings" button/section
+- New component: `src/components/admin/WebhookSettings.tsx` -- Modal/form for configuring webhook URL
+- `src/hooks/useUserProfile.ts` -- Update types to include `webhook_url`
 
 ---
 
-## Feature 4: Remove Duplicative "Your Upcoming Slots" Section
+## Part 3: Manual Webhook Trigger
 
-**Analysis of the Duplication**:
-- **"Your Upcoming Slots" (SlotsManager.tsx)**: Lists the host's created events with edit/delete controls and booking counts
-- **"Reservations for Your Events" (ReservationsList.tsx)**: Lists the same events but shows detailed guest lists, payment info access, and confirmed/waitlist sub-tabs
+**What changes for hosts**: A "Send to Kanyon" (or "Send to Bill Splitter") button appears alongside the existing "Payment Info" button for each event. Clicking it sends participant data to the configured webhook URL.
 
-**Why Both Exist**: The SlotsManager focuses on event management (editing/deleting), while ReservationsList focuses on guest management.
+**Security approach**: The webhook call is made from a backend function (Edge Function), NOT from the browser. This ensures:
+- The webhook URL is never exposed to participants
+- Only consented users' data is included
+- The host's identity is verified server-side
 
-**Recommendation**: Merge the edit/delete controls into ReservationsList so hosts have a single unified view. This eliminates the need for SlotsManager in the "Create & Manage SGD" tab.
+**Data sent in the webhook** (JSON POST):
+```json
+{
+  "event_name": "Dinner at Joe's",
+  "event_date": "2026-02-20",
+  "event_time": "6:00 PM",
+  "participants": [
+    {
+      "name": "Jane Doe",
+      "email": "jane@example.com",
+      "venmo_username": "@janedoe",
+      "zelle_identifier": null
+    }
+  ]
+}
+```
+Only participants who have `payment_sharing_consent = true` are included. If a participant hasn't consented, they are excluded from the webhook payload (the host is informed).
 
-**Changes Required**:
-1. **Remove SlotsManager from the UI** in `src/components/customer/CustomerView.tsx` (line 151)
-2. **Add edit/delete buttons to ReservationsList.tsx** in the slot header area
-3. **Update ReservationsList to show slots even with 0 bookings** (currently it only shows slots that have bookings or waitlist entries)
-
-**Files to Modify**:
-- `src/components/customer/CustomerView.tsx` - Remove `<SlotsManager />` import and usage
-- `src/components/admin/AdminView.tsx` - Remove `<SlotsManager />` import and usage  
-- `src/components/admin/ReservationsList.tsx` - Add edit/delete controls and show all user slots
-
-**ReservationsList Enhancements**:
-- Import `EditSlotModal`, `useDeleteAvailabilitySlot`, and `useUserOwnedSlots`
-- Merge user-owned slots with booking data so events with 0 reservations still appear
-- Add Pencil/Trash buttons in the slot header (similar to SlotsManager)
+**Files modified/created**:
+- New Edge Function: `supabase/functions/send-webhook/index.ts`
+- `supabase/config.toml` -- Register the new function
+- `src/components/admin/ReservationsList.tsx` -- Add "Send to Bill Splitter" button
+- New component: `src/components/admin/SendWebhookButton.tsx` -- Button with loading/success states
 
 ---
 
-## Summary of Changes
+## Part 4: Security Measures
 
-| File | Change |
-|------|--------|
-| `src/components/customer/CustomerView.tsx` | Change default partySize from 2 to 1; Remove SlotsManager |
-| `src/components/admin/AdminView.tsx` | Remove SlotsManager |
-| `supabase/functions/send-booking-notification/index.ts` | Add ICS generation and email attachment; Add promotion email template |
-| `src/hooks/useWaitlist.ts` | Trigger promotion notification on successful waitlist bump |
-| `src/components/admin/ReservationsList.tsx` | Add edit/delete controls; Show all user slots (even with 0 bookings) |
-| `src/components/admin/SlotsManager.tsx` | (No changes - will no longer be used in main UI but file remains for potential future use) |
+1. **Consent enforcement**: Only users who opted in have their data included in webhook payloads
+2. **Server-side only**: The Edge Function fetches participant data using the service role key, verifies the caller owns the slot, and only then sends the webhook
+3. **RLS on profiles**: Payment info columns are only readable by the user themselves (existing policy) and by the secure RPC function for slot owners
+4. **Webhook URL validation**: Basic URL validation before saving
+5. **No PII in logs**: The Edge Function avoids logging participant details
 
 ---
 
 ## Technical Details
 
-### ICS Content for Edge Function
-```typescript
-function generateICSContent(slot: any, bookingId: string, partySize: number): string {
-  const formatICSDate = (date: string, time: string) => {
-    const [hours, minutes] = time.split(':');
-    const dateObj = new Date(`${date}T${hours}:${minutes}:00`);
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    return `${dateObj.getFullYear()}${pad(dateObj.getMonth()+1)}${pad(dateObj.getDate())}T${pad(dateObj.getHours())}${pad(dateObj.getMinutes())}00`;
-  };
-  
-  const dtStart = formatICSDate(slot.date, slot.time);
-  const dtEnd = slot.end_time 
-    ? formatICSDate(slot.date, slot.end_time)
-    : formatICSDate(slot.date, `${(parseInt(slot.time.split(':')[0]) + 2).toString().padStart(2, '0')}:${slot.time.split(':')[1]}`);
-  
-  return [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    'PRODID:-//SGD Reservations//EN',
-    'CALSCALE:GREGORIAN',
-    'METHOD:PUBLISH',
-    'BEGIN:VEVENT',
-    `UID:booking-${bookingId}@sgd.app`,
-    `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
-    `DTSTART:${dtStart}`,
-    `DTEND:${dtEnd}`,
-    `SUMMARY:${slot.name}`,
-    `DESCRIPTION:Party of ${partySize} guests. Hosted SGD event.`,
-    'STATUS:CONFIRMED',
-    'END:VEVENT',
-    'END:VCALENDAR',
-  ].join('\r\n');
-}
+### Database Migration
+```sql
+-- Add consent column to user_profiles
+ALTER TABLE public.user_profiles
+  ADD COLUMN payment_sharing_consent boolean NOT NULL DEFAULT false;
+
+-- Add webhook_url column for hosts
+ALTER TABLE public.user_profiles
+  ADD COLUMN webhook_url text;
 ```
 
-### Resend Attachment Format
-```typescript
-import { encode } from "https://deno.land/std@0.190.0/encoding/base64.ts";
+### New Edge Function: `send-webhook`
+- Accepts: `{ slotId: string }` with auth header
+- Verifies caller owns the slot via `is_slot_owner` check
+- Fetches confirmed bookings for the slot
+- Joins with `user_profiles` to get payment info and consent status
+- Filters to only consented participants
+- POSTs the payload to the host's configured `webhook_url`
+- Returns success/failure and count of participants sent vs. excluded
 
-// In the email send call:
-attachments: [{
-  filename: `${slot.name.replace(/[^a-zA-Z0-9]/g, '-')}.ics`,
-  content: encode(new TextEncoder().encode(icsContent)),
-}]
-```
+### New RPC Function: `get_webhook_participant_data`
+Similar to the existing `get_participant_payment_info` but also returns `payment_sharing_consent` so the Edge Function can filter appropriately. Alternatively, reuse the existing RPC and add the consent column to its return type.
+
+### Auth.tsx Signup Changes
+- New state: `const [consentChecked, setConsentChecked] = useState(false)`
+- Validation: signup blocked if checkbox is unchecked
+- Consent value passed through `signUp()` to profile creation
+
+### File Summary
+
+| File | Change |
+|------|--------|
+| Database migration | Add `payment_sharing_consent` and `webhook_url` columns to `user_profiles` |
+| `src/pages/Auth.tsx` | Add consent checkbox to signup form |
+| `src/contexts/AuthContext.tsx` | Pass `paymentSharingConsent` to profile insert |
+| `src/hooks/useUserProfile.ts` | Update `UserProfile` type with new fields |
+| `src/lib/types.ts` | Update `UserProfile` type with new fields |
+| `supabase/functions/send-webhook/index.ts` | New Edge Function for secure webhook dispatch |
+| `supabase/config.toml` | Register `send-webhook` function |
+| `src/components/admin/WebhookSettings.tsx` | New modal for configuring webhook URL |
+| `src/components/admin/SendWebhookButton.tsx` | New button component for triggering webhook |
+| `src/components/admin/ReservationsList.tsx` | Add webhook button to each event card |
 
