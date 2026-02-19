@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { format, parseISO } from 'date-fns';
-import { CalendarCheck, CreditCard, Loader2, Users, History, Calendar, Clock, UtensilsCrossed, Pencil, Trash2 } from 'lucide-react';
+import { CalendarCheck, CreditCard, Loader2, Users, History, Calendar, Clock, UtensilsCrossed, Pencil, Trash2, Settings } from 'lucide-react';
 import { useOwnerAllBookings, useOwnerWaitlistEntries } from '@/hooks/useOwnerBookings';
 import { useUserOwnedSlots } from '@/hooks/useUserOwnedSlots';
 import { useDeleteAvailabilitySlot } from '@/hooks/useAvailabilitySlots';
@@ -9,6 +9,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { ParticipantPaymentModal } from './ParticipantPaymentModal';
 import { EditSlotModal } from './EditSlotModal';
+import { WebhookSettings } from './WebhookSettings';
+import { SendWebhookButton } from './SendWebhookButton';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -88,6 +90,8 @@ export function ReservationsList() {
     slotId: null,
     slotName: '',
   });
+
+  const [webhookSettingsOpen, setWebhookSettingsOpen] = useState(false);
 
   const [editDialog, setEditDialog] = useState<{
     open: boolean;
@@ -330,6 +334,7 @@ export function ReservationsList() {
             </div>
           </div>
           <div className="flex items-center gap-1">
+            <SendWebhookButton slotId={group.slotId} slotName={group.slotName} />
             <Button
               variant="outline"
               size="sm"
@@ -434,7 +439,13 @@ export function ReservationsList() {
   return (
     <>
       <div className="admin-card">
-        <h2 className="mb-6 text-xl font-semibold">Your Events & Reservations</h2>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-semibold">Your Events & Reservations</h2>
+          <Button variant="outline" size="sm" onClick={() => setWebhookSettingsOpen(true)}>
+            <Settings className="mr-2 h-4 w-4" />
+            Webhook Settings
+          </Button>
+        </div>
         
         <Tabs defaultValue="upcoming" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
@@ -461,6 +472,11 @@ export function ReservationsList() {
         onOpenChange={(open) => !open && setPaymentModal({ open: false, slotId: null, slotName: '' })}
         slotId={paymentModal.slotId}
         slotName={paymentModal.slotName}
+      />
+
+      <WebhookSettings
+        open={webhookSettingsOpen}
+        onOpenChange={setWebhookSettingsOpen}
       />
 
       {/* Edit Slot Modal */}

@@ -8,6 +8,8 @@ export interface UserProfile {
   display_name: string | null;
   venmo_username: string | null;
   zelle_identifier: string | null;
+  payment_sharing_consent: boolean;
+  webhook_url: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -64,6 +66,8 @@ interface UpdateProfileInput {
   display_name?: string | null;
   venmo_username?: string | null;
   zelle_identifier?: string | null;
+  payment_sharing_consent?: boolean;
+  webhook_url?: string | null;
 }
 
 export function useUpdateUserProfile() {

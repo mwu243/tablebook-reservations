@@ -108,27 +108,33 @@ export type Database = {
           created_at: string
           display_name: string | null
           id: string
+          payment_sharing_consent: boolean
           updated_at: string
           user_id: string
           venmo_username: string | null
+          webhook_url: string | null
           zelle_identifier: string | null
         }
         Insert: {
           created_at?: string
           display_name?: string | null
           id?: string
+          payment_sharing_consent?: boolean
           updated_at?: string
           user_id: string
           venmo_username?: string | null
+          webhook_url?: string | null
           zelle_identifier?: string | null
         }
         Update: {
           created_at?: string
           display_name?: string | null
           id?: string
+          payment_sharing_consent?: boolean
           updated_at?: string
           user_id?: string
           venmo_username?: string | null
+          webhook_url?: string | null
           zelle_identifier?: string | null
         }
         Relationships: []
@@ -253,6 +259,17 @@ export type Database = {
           customer_name: string
           dietary_restrictions: string
           party_size: number
+          venmo_username: string
+          zelle_identifier: string
+        }[]
+      }
+      get_webhook_participant_data: {
+        Args: { p_slot_id: string }
+        Returns: {
+          customer_email: string
+          customer_name: string
+          party_size: number
+          payment_sharing_consent: boolean
           venmo_username: string
           zelle_identifier: string
         }[]

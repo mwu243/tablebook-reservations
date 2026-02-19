@@ -2,3 +2,6 @@ project_id = "lkcmouwxefojbnpxndxi"
 
 [functions.send-booking-notification]
 verify_jwt = false
+
+[functions.send-webhook]
+verify_jwt = false
