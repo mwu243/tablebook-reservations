@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { format, startOfMonth, endOfMonth } from 'date-fns';
+import { format, startOfMonth, endOfMonth, startOfDay, max } from 'date-fns';
 
 export interface DateAvailability {
   date: string;
@@ -8,7 +8,9 @@ export interface DateAvailability {
 }
 
 export function useMonthAvailability(month: Date) {
-  const startDate = format(startOfMonth(month), 'yyyy-MM-dd');
+  const today = startOfDay(new Date());
+  const monthStart = startOfMonth(month);
+  const startDate = format(max([today, monthStart]), 'yyyy-MM-dd');
   const endDate = format(endOfMonth(month), 'yyyy-MM-dd');
 
   return useQuery({
