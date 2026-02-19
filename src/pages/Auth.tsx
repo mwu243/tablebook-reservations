@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UtensilsCrossed, Loader2, AlertCircle, CreditCard } from 'lucide-react';
@@ -41,6 +42,7 @@ export default function Auth() {
   const [password, setPassword] = useState('');
   const [venmoUsername, setVenmoUsername] = useState('');
   const [zelleIdentifier, setZelleIdentifier] = useState('');
+  const [consentChecked, setConsentChecked] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<{ 
@@ -50,6 +52,7 @@ export default function Auth() {
     venmoUsername?: string;
     zelleIdentifier?: string;
     payment?: string;
+    consent?: string;
   }>({});
 
   // Redirect if already logged in
@@ -103,7 +106,11 @@ export default function Auth() {
     if (zelleIdentifier && !zelleEmailRegex.test(zelleIdentifier) && !zellePhoneRegex.test(zelleIdentifier)) {
       errors.zelleIdentifier = 'Please enter a valid email or phone number';
     }
-    
+
+    if (!consentChecked) {
+      errors.consent = 'You must consent to data sharing to create an account';
+    }
+
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -138,6 +145,7 @@ export default function Auth() {
       displayName: fullName.trim(),
       venmoUsername: venmoUsername || undefined,
       zelleIdentifier: zelleIdentifier || undefined,
+      paymentSharingConsent: consentChecked,
     });
     setIsLoading(false);
     
@@ -376,6 +384,27 @@ export default function Auth() {
                       <p className="text-sm text-destructive">{validationErrors.zelleIdentifier}</p>
                     )}
                   </div>
+                </div>
+
+                {/* Data Sharing Consent */}
+                <div className="rounded-lg border border-border p-4 space-y-3">
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      id="consent-checkbox"
+                      checked={consentChecked}
+                      onCheckedChange={(checked) => {
+                        setConsentChecked(checked === true);
+                        clearFormErrors();
+                      }}
+                      className="mt-0.5"
+                    />
+                    <Label htmlFor="consent-checkbox" className="text-sm leading-relaxed cursor-pointer">
+                      I consent to sharing my name, email, and payment information (Venmo/Zelle) with event hosts for bill-splitting purposes.
+                    </Label>
+                  </div>
+                  {validationErrors.consent && (
+                    <p className="text-sm text-destructive">{validationErrors.consent}</p>
+                  )}
                 </div>
               </CardContent>
               <CardFooter>

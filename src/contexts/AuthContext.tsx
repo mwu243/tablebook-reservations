@@ -6,6 +6,7 @@ interface PaymentInfo {
   displayName?: string;
   venmoUsername?: string;
   zelleIdentifier?: string;
+  paymentSharingConsent?: boolean;
 }
 
 interface AuthContextType {
@@ -167,6 +168,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           display_name: paymentInfo.displayName || null,
           venmo_username: paymentInfo.venmoUsername || null,
           zelle_identifier: paymentInfo.zelleIdentifier || null,
+          payment_sharing_consent: paymentInfo.paymentSharingConsent ?? false,
         });
       
       if (profileError) {
