@@ -126,7 +126,9 @@ export function AvailabilityCalendar({ selected, onSelect }: AvailabilityCalenda
       {/* Legend */}
       <div className="mt-4 flex items-center justify-center gap-6 border-t pt-4 text-sm text-muted-foreground">
         <div className="flex items-center gap-2">
-          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-green-500 text-[10px] font-bold text-white">2</span>
+          <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-green-500 px-1 text-[10px] font-bold text-white">
+            {availabilityMap ? Array.from(availabilityMap.values()).reduce((sum, count) => sum + count, 0) : 0}
+          </span>
           <span>Events available</span>
         </div>
         <div className="flex items-center gap-2">
