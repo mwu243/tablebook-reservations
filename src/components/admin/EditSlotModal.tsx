@@ -23,6 +23,7 @@ import {
 import { cn } from '@/lib/utils';
 import { AvailabilitySlot } from '@/lib/types';
 import { useUpdateAvailabilitySlot } from '@/hooks/useAvailabilitySlots';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 interface EditSlotModalProps {
@@ -94,6 +95,16 @@ export function EditSlotModal({ open, onOpenChange, slot }: EditSlotModalProps) 
         },
       });
       toast.success('Event updated successfully');
+
+      // Notify all participants about the event change (fire and forget)
+      supabase.functions.invoke('send-booking-notification', {
+        body: { slotId: slot.id, bookingType: 'event_update' },
+      }).then(({ error }) => {
+        if (error) {
+          console.error('Failed to send event update notifications:', error);
+        }
+      });
+
       onOpenChange(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to update event';

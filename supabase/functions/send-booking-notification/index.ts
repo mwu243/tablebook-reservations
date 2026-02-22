@@ -12,12 +12,18 @@ const corsHeaders = {
 
 const BookingNotificationSchema = z.object({
   slotId: z.string().uuid(),
-  customerName: z.string().min(1).max(200),
-  customerEmail: z.string().email().max(255),
-  partySize: z.number().int().positive().max(100),
-  bookingType: z.enum(["booking", "waitlist", "promotion"]),
+  customerName: z.string().min(1).max(200).optional(),
+  customerEmail: z.string().email().max(255).optional(),
+  partySize: z.number().int().positive().max(100).optional(),
+  bookingType: z.enum(["booking", "waitlist", "promotion", "event_update"]),
   bookingId: z.string().uuid().optional(),
-});
+}).refine((data) => {
+  // customerName, customerEmail, partySize are required for non-event_update types
+  if (data.bookingType !== "event_update") {
+    return !!data.customerName && !!data.customerEmail && data.partySize !== undefined;
+  }
+  return true;
+}, { message: "customerName, customerEmail, and partySize are required for this booking type" });
 
 // --- Date formatting and ICS generation ---
 const formatDate = (dateStr: string): string => {
@@ -99,6 +105,149 @@ const generateICSContent = (
   return lines.join("\r\n");
 };
 
+// --- Event Update notification handler ---
+async function handleEventUpdate(
+  supabase: ReturnType<typeof createClient>,
+  resend: Resend,
+  slot: Record<string, unknown>,
+  formattedDate: string,
+  formattedTime: string,
+  endTimeFormatted: string
+): Promise<void> {
+  const slotId = slot.id as string;
+
+  // Fetch all confirmed bookings for this slot
+  const { data: bookings, error: bookingsError } = await supabase
+    .from("bookings")
+    .select("id, customer_name, customer_email, party_size")
+    .eq("slot_id", slotId)
+    .eq("status", "confirmed");
+
+  if (bookingsError) {
+    console.error("event_update: Error fetching bookings", bookingsError);
+  }
+
+  // Fetch all waitlist entries for this slot
+  const { data: waitlistEntries, error: waitlistError } = await supabase
+    .from("waitlist_entries")
+    .select("id, customer_name, customer_email, party_size")
+    .eq("slot_id", slotId);
+
+  if (waitlistError) {
+    console.error("event_update: Error fetching waitlist", waitlistError);
+  }
+
+  const locationLine = slot.location ? `<div class="detail-row"><span class="label">Location</span><span class="value">${slot.location}</span></div>` : "";
+  const costLine = slot.estimated_cost_per_person ? `<div class="detail-row"><span class="label">Est. Cost/Person</span><span class="value">$${Number(slot.estimated_cost_per_person).toFixed(2)}</span></div>` : "";
+
+  const buildEmailHtml = (recipientName: string, isConfirmed: boolean, partySize?: number) => `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 30px; border-radius: 10px 10px 0 0; text-align: center; }
+          .content { background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; }
+          .details { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; }
+          .detail-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee; }
+          .detail-row:last-child { border-bottom: none; }
+          .label { color: #666; }
+          .value { font-weight: 600; }
+          .footer { text-align: center; color: #666; font-size: 14px; margin-top: 20px; }
+          .calendar-note { background: #fef3c7; padding: 15px; border-radius: 8px; margin-top: 20px; text-align: center; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1 style="margin: 0;">Event Updated</h1>
+          </div>
+          <div class="content">
+            <p>Hi ${recipientName},</p>
+            <p>The details for an event you ${isConfirmed ? "have a reservation for" : "are on the waitlist for"} have been updated. Please review the new details below:</p>
+            
+            <div class="details">
+              <div class="detail-row">
+                <span class="label">Event</span>
+                <span class="value">${slot.name}</span>
+              </div>
+              <div class="detail-row">
+                <span class="label">Date</span>
+                <span class="value">${formattedDate}</span>
+              </div>
+              <div class="detail-row">
+                <span class="label">Time</span>
+                <span class="value">${formattedTime}${endTimeFormatted}</span>
+              </div>
+              ${locationLine}
+              ${costLine}
+              ${partySize ? `<div class="detail-row"><span class="label">Party Size</span><span class="value">${partySize} ${partySize === 1 ? "guest" : "guests"}</span></div>` : ""}
+            </div>
+            
+            ${isConfirmed ? `
+            <div class="calendar-note">
+              <p style="margin: 0;"><strong>📅 Updated Calendar Invite Attached</strong></p>
+              <p style="margin: 5px 0 0 0; font-size: 14px;">Open the attached .ics file to update this event in your calendar.</p>
+            </div>
+            ` : ""}
+            
+            <p>If you have any questions, please contact the host.</p>
+            
+            <div class="footer">
+              <p>This is an automated notification from SGD Reservations.</p>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+
+  // Send to confirmed bookings (with ICS attachment)
+  if (bookings && bookings.length > 0) {
+    for (const booking of bookings) {
+      try {
+        const icsContent = generateICSContent(slot as any, booking.id, booking.party_size);
+        const safeFilename = (slot.name as string).replace(/[^a-zA-Z0-9\s-]/g, "").replace(/\s+/g, "-");
+
+        await resend.emails.send({
+          from: "Reservations <onboarding@resend.dev>",
+          to: [booking.customer_email],
+          subject: `Event Updated - ${slot.name}`,
+          html: buildEmailHtml(booking.customer_name, true, booking.party_size),
+          attachments: [{
+            filename: `${safeFilename}-updated.ics`,
+            content: encode(new TextEncoder().encode(icsContent)),
+          }],
+        });
+        console.log(`event_update: Sent to confirmed participant ${booking.customer_email}`);
+      } catch (err) {
+        console.error(`event_update: Failed to send to ${booking.customer_email}`, err);
+      }
+    }
+  }
+
+  // Send to waitlist entries (no ICS)
+  if (waitlistEntries && waitlistEntries.length > 0) {
+    for (const entry of waitlistEntries) {
+      try {
+        await resend.emails.send({
+          from: "Reservations <onboarding@resend.dev>",
+          to: [entry.customer_email],
+          subject: `Event Updated - ${slot.name}`,
+          html: buildEmailHtml(entry.customer_name, false, entry.party_size),
+        });
+        console.log(`event_update: Sent to waitlisted participant ${entry.customer_email}`);
+      } catch (err) {
+        console.error(`event_update: Failed to send to ${entry.customer_email}`, err);
+      }
+    }
+  }
+
+  const totalSent = (bookings?.length || 0) + (waitlistEntries?.length || 0);
+  console.log(`event_update: Finished. Notified ${totalSent} participants.`);
+}
+
 const handler = async (req: Request): Promise<Response> => {
   console.log("send-booking-notification: Received request");
 
@@ -136,6 +285,7 @@ const handler = async (req: Request): Promise<Response> => {
     const rawBody = await req.json();
     const validation = BookingNotificationSchema.safeParse(rawBody);
     if (!validation.success) {
+      console.error("send-booking-notification: Validation failed", validation.error.errors);
       return new Response(
         JSON.stringify({ error: 'Invalid input' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -156,7 +306,7 @@ const handler = async (req: Request): Promise<Response> => {
     const resend = new Resend(resendApiKey);
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    console.log("send-booking-notification: Processing", { slotId, customerEmail, bookingType });
+    console.log("send-booking-notification: Processing", { slotId, bookingType });
 
     // Fetch slot details
     const { data: slot, error: slotError } = await supabase
@@ -172,6 +322,20 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log("send-booking-notification: Found slot", slot.name);
 
+    const formattedDate = formatDate(slot.date);
+    const formattedTime = formatTime(slot.time);
+    const endTimeFormatted = slot.end_time ? ` - ${formatTime(slot.end_time)}` : "";
+
+    // --- Handle event_update type ---
+    if (bookingType === "event_update") {
+      await handleEventUpdate(supabase, resend, slot, formattedDate, formattedTime, endTimeFormatted);
+      return new Response(
+        JSON.stringify({ success: true, message: "Event update notifications sent" }),
+        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    // --- Original booking/waitlist/promotion flow ---
     // Fetch host email from auth.users using slot.user_id
     let hostEmail: string | null = null;
     if (slot.user_id) {
@@ -184,10 +348,6 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
-    const formattedDate = formatDate(slot.date);
-    const formattedTime = formatTime(slot.time);
-    const endTimeFormatted = slot.end_time ? ` - ${formatTime(slot.end_time)}` : "";
-
     const isWaitlist = bookingType === "waitlist";
     const isPromotion = bookingType === "promotion";
 
@@ -196,7 +356,7 @@ const handler = async (req: Request): Promise<Response> => {
     
     if (!isWaitlist) {
       const eventId = bookingId || `${slotId}-${Date.now()}`;
-      const icsContent = generateICSContent(slot, eventId, partySize);
+      const icsContent = generateICSContent(slot, eventId, partySize!);
       const safeFilename = slot.name.replace(/[^a-zA-Z0-9\s-]/g, "").replace(/\s+/g, "-");
       icsAttachment = [{
         filename: `${safeFilename}.ics`,
@@ -296,7 +456,7 @@ const handler = async (req: Request): Promise<Response> => {
       attachments?: { filename: string; content: string }[];
     } = {
       from: "Reservations <onboarding@resend.dev>",
-      to: [customerEmail],
+      to: [customerEmail!],
       subject: customerSubject,
       html: customerEmailHtml,
     };
