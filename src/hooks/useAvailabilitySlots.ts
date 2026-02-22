@@ -209,16 +209,8 @@ export function useUpdateAvailabilitySlot() {
       return data as AvailabilitySlot;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['availability-slots'] });
-      queryClient.invalidateQueries({ queryKey: ['user-owned-slots'] });
-      queryClient.invalidateQueries({ queryKey: ['month-availability'] });
-      queryClient.invalidateQueries({ queryKey: ['owner-bookings'] });
-      queryClient.invalidateQueries({ queryKey: ['owner-all-bookings'] });
-      queryClient.invalidateQueries({ queryKey: ['owner-lottery-bookings'] });
-      queryClient.invalidateQueries({ queryKey: ['owner-waitlist-entries'] });
-      queryClient.invalidateQueries({ queryKey: ['upcoming-events-with-hosts'] });
-      queryClient.invalidateQueries({ queryKey: ['upcoming-slots'] });
-      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      // Force refetch ALL active queries to ensure every part of the UI updates
+      queryClient.refetchQueries({ type: 'active' });
     },
   });
 }

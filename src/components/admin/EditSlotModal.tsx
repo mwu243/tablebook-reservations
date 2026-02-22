@@ -45,7 +45,6 @@ export function EditSlotModal({ open, onOpenChange, slot }: EditSlotModalProps) 
   const [totalTablesInput, setTotalTablesInput] = useState('1');
   const [waitlistEnabled, setWaitlistEnabled] = useState(false);
 
-  // Reset form when slot changes
   useEffect(() => {
     if (slot) {
       setName(slot.name);
@@ -53,7 +52,7 @@ export function EditSlotModal({ open, onOpenChange, slot }: EditSlotModalProps) 
       setLocation(slot.location || '');
       setEstimatedCost(slot.estimated_cost_per_person?.toString() || '');
       setDate(new Date(slot.date));
-      setTime(slot.time.slice(0, 5)); // HH:MM format
+      setTime(slot.time.slice(0, 5));
       setEndTime(slot.end_time ? slot.end_time.slice(0, 5) : '');
       setTotalTablesInput(slot.total_tables.toString());
       setWaitlistEnabled(slot.waitlist_enabled);
@@ -65,7 +64,6 @@ export function EditSlotModal({ open, onOpenChange, slot }: EditSlotModalProps) 
     
     if (!slot || !date) return;
 
-    // Validation
     if (endTime && endTime <= time) {
       toast.error('End time must be after start time');
       return;
@@ -96,7 +94,6 @@ export function EditSlotModal({ open, onOpenChange, slot }: EditSlotModalProps) 
       });
       toast.success('Event updated successfully');
 
-      // Notify all participants about the event change (fire and forget)
       supabase.functions.invoke('send-booking-notification', {
         body: { slotId: slot.id, bookingType: 'event_update' },
       }).then(({ error }) => {
@@ -120,59 +117,62 @@ export function EditSlotModal({ open, onOpenChange, slot }: EditSlotModalProps) 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <form onSubmit={handleSubmit}>
-          <DialogHeader>
+      <DialogContent className="max-w-md max-h-[90vh] flex flex-col p-0">
+        <form onSubmit={handleSubmit} className="flex flex-col max-h-[90vh]">
+          <DialogHeader className="px-6 pt-6 pb-2">
             <DialogTitle>Edit Event</DialogTitle>
             <DialogDescription>
-              Update the details for this event. Existing bookings will be preserved.
+              Update event details. Existing bookings will be preserved.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-name">Event Name</Label>
+          <div className="flex-1 overflow-y-auto px-6 py-3 space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-name" className="text-xs font-medium">Event Name</Label>
               <Input
                 id="edit-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g., Wine Tasting Evening"
+                className="h-9"
                 required
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="edit-description">Description (optional)</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-description" className="text-xs font-medium">Description (optional)</Label>
               <Textarea
                 id="edit-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Add details about this event..."
                 rows={2}
+                className="min-h-[60px] resize-none"
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-location">
-                  <div className="flex items-center gap-1.5">
-                    <MapPin className="h-3.5 w-3.5" />
-                    Location (optional)
-                  </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-location" className="text-xs font-medium">
+                  <span className="flex items-center gap-1">
+                    <MapPin className="h-3 w-3" />
+                    Location
+                  </span>
                 </Label>
                 <Input
                   id="edit-location"
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
                   placeholder="e.g., 123 Main St"
+                  className="h-9"
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-cost">
-                  <div className="flex items-center gap-1.5">
-                    <DollarSign className="h-3.5 w-3.5" />
-                    Est. Cost/Person
-                  </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-cost" className="text-xs font-medium">
+                  <span className="flex items-center gap-1">
+                    <DollarSign className="h-3 w-3" />
+                    Cost/Person
+                  </span>
                 </Label>
                 <Input
                   id="edit-cost"
@@ -181,23 +181,24 @@ export function EditSlotModal({ open, onOpenChange, slot }: EditSlotModalProps) 
                   min="0"
                   value={estimatedCost}
                   onChange={(e) => setEstimatedCost(e.target.value)}
-                  placeholder="e.g., 25.00"
+                  placeholder="25.00"
+                  className="h-9"
                 />
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Date</Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Date</Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
                     className={cn(
-                      'w-full justify-start text-left font-normal',
+                      'w-full justify-start text-left font-normal h-9',
                       !date && 'text-muted-foreground'
                     )}
                   >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    <CalendarIcon className="mr-2 h-3.5 w-3.5" />
                     {date ? format(date, 'PPP') : 'Pick a date'}
                   </Button>
                 </PopoverTrigger>
@@ -207,85 +208,85 @@ export function EditSlotModal({ open, onOpenChange, slot }: EditSlotModalProps) 
                     selected={date}
                     onSelect={setDate}
                     disabled={(d) => d < new Date(new Date().setHours(0, 0, 0, 0))}
+                    className={cn("p-3 pointer-events-auto")}
                   />
                 </PopoverContent>
               </Popover>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-time">Start Time</Label>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-time" className="text-xs font-medium">Start Time</Label>
                 <Input
                   id="edit-time"
                   type="time"
                   value={time}
                   onChange={(e) => setTime(e.target.value)}
+                  className="h-9"
                   required
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-end-time">End Time (optional)</Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-end-time" className="text-xs font-medium">End Time</Label>
                 <Input
                   id="edit-end-time"
                   type="time"
                   value={endTime}
                   onChange={(e) => setEndTime(e.target.value)}
+                  className="h-9"
                 />
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="edit-tables">Total Spots</Label>
-              <Input
-                id="edit-tables"
-                type="number"
-                min={slot.booked_tables || 1}
-                value={totalTablesInput}
-                onChange={(e) => setTotalTablesInput(e.target.value)}
-                onBlur={() => {
-                  const parsed = parseInt(totalTablesInput);
-                  const minVal = slot.booked_tables || 1;
-                  if (isNaN(parsed) || parsed < minVal) {
-                    setTotalTablesInput(minVal.toString());
-                  }
-                }}
-                required
-              />
-              {slot.booked_tables > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  Minimum: {slot.booked_tables} (already booked)
-                </p>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <div className="space-y-0.5">
-                <Label htmlFor="edit-waitlist">Enable Waitlist</Label>
-                <p className="text-xs text-muted-foreground">
-                  Allow users to join a waitlist when full
-                </p>
+            <div className="grid grid-cols-2 gap-3 items-end">
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-tables" className="text-xs font-medium">Total Spots</Label>
+                <Input
+                  id="edit-tables"
+                  type="number"
+                  min={slot.booked_tables || 1}
+                  value={totalTablesInput}
+                  onChange={(e) => setTotalTablesInput(e.target.value)}
+                  onBlur={() => {
+                    const parsed = parseInt(totalTablesInput);
+                    const minVal = slot.booked_tables || 1;
+                    if (isNaN(parsed) || parsed < minVal) {
+                      setTotalTablesInput(minVal.toString());
+                    }
+                  }}
+                  className="h-9"
+                  required
+                />
+                {slot.booked_tables > 0 && (
+                  <p className="text-[10px] text-muted-foreground">
+                    Min: {slot.booked_tables} (booked)
+                  </p>
+                )}
               </div>
-              <Switch
-                id="edit-waitlist"
-                checked={waitlistEnabled}
-                onCheckedChange={setWaitlistEnabled}
-              />
+              <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                <Label htmlFor="edit-waitlist" className="text-xs font-medium cursor-pointer">Waitlist</Label>
+                <Switch
+                  id="edit-waitlist"
+                  checked={waitlistEnabled}
+                  onCheckedChange={setWaitlistEnabled}
+                />
+              </div>
             </div>
           </div>
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <DialogFooter className="px-6 py-4 border-t">
+            <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={updateSlot.isPending}>
+            <Button type="submit" size="sm" disabled={updateSlot.isPending}>
               {updateSlot.isPending ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                   Saving...
                 </>
               ) : (
                 <>
-                  <Save className="mr-2 h-4 w-4" />
+                  <Save className="mr-1.5 h-3.5 w-3.5" />
                   Save Changes
                 </>
               )}
