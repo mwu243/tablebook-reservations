@@ -104,7 +104,7 @@ export function ProfileSettingsDialog({ open, onOpenChange }: ProfileSettingsDia
                 id="venmo"
                 value={venmoUsername}
                 onChange={(e) => setVenmoUsername(e.target.value)}
-                placeholder="@your-venmo-handle"
+                placeholder="your-venmo-handle"
               />
             </div>
 
