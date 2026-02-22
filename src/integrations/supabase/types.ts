@@ -212,7 +212,21 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      host_display_names: {
+        Row: {
+          display_name: string | null
+          user_id: string | null
+        }
+        Insert: {
+          display_name?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          display_name?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       admin_update_booking_status: {
