@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { Resend } from "resend";
 import { encode } from "https://deno.land/std@0.190.0/encoding/base64.ts";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,15 +10,16 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-interface BookingNotificationRequest {
-  slotId: string;
-  customerName: string;
-  customerEmail: string;
-  partySize: number;
-  bookingType: "booking" | "waitlist" | "promotion";
-  bookingId?: string;
-}
+const BookingNotificationSchema = z.object({
+  slotId: z.string().uuid(),
+  customerName: z.string().min(1).max(200),
+  customerEmail: z.string().email().max(255),
+  partySize: z.number().int().positive().max(100),
+  bookingType: z.enum(["booking", "waitlist", "promotion"]),
+  bookingId: z.string().uuid().optional(),
+});
 
+// --- Date formatting and ICS generation ---
 const formatDate = (dateStr: string): string => {
   const date = new Date(dateStr);
   return date.toLocaleDateString("en-US", {
@@ -36,7 +38,6 @@ const formatTime = (timeStr: string): string => {
   return `${hour12}:${minutes} ${ampm}`;
 };
 
-// ICS generation functions
 const formatICSDate = (dateStr: string, timeStr: string): string => {
   const [hours, minutes] = timeStr.split(":");
   const dateObj = new Date(`${dateStr}T${hours}:${minutes}:00`);
@@ -59,7 +60,6 @@ const generateICSContent = (
 ): string => {
   const dtStart = formatICSDate(slot.date, slot.time);
   
-  // If no end_time, default to 2 hours after start
   let dtEnd: string;
   if (slot.end_time) {
     dtEnd = formatICSDate(slot.date, slot.end_time);
@@ -107,22 +107,54 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
+    // --- Authentication check ---
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+    const userClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    const { data: { user }, error: authError } = await userClient.auth.getUser();
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // --- Input validation ---
+    const rawBody = await req.json();
+    const validation = BookingNotificationSchema.safeParse(rawBody);
+    if (!validation.success) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid input' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { slotId, customerName, customerEmail, partySize, bookingType, bookingId } = validation.data;
+
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
     if (!resendApiKey) {
       throw new Error("RESEND_API_KEY is not configured");
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     if (!supabaseUrl || !supabaseServiceKey) {
       throw new Error("Supabase environment variables not configured");
     }
 
     const resend = new Resend(resendApiKey);
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    const { slotId, customerName, customerEmail, partySize, bookingType, bookingId }: BookingNotificationRequest =
-      await req.json();
 
     console.log("send-booking-notification: Processing", { slotId, customerEmail, bookingType });
 
@@ -160,13 +192,11 @@ const handler = async (req: Request): Promise<Response> => {
     const isPromotion = bookingType === "promotion";
 
     // Generate ICS for confirmed bookings and promotions
-    let icsContent: string | null = null;
     let icsAttachment: { filename: string; content: string }[] = [];
     
     if (!isWaitlist) {
-      // Use bookingId if provided, otherwise generate a unique ID
       const eventId = bookingId || `${slotId}-${Date.now()}`;
-      icsContent = generateICSContent(slot, eventId, partySize);
+      const icsContent = generateICSContent(slot, eventId, partySize);
       const safeFilename = slot.name.replace(/[^a-zA-Z0-9\s-]/g, "").replace(/\s+/g, "-");
       icsAttachment = [{
         filename: `${safeFilename}.ics`,
@@ -174,7 +204,6 @@ const handler = async (req: Request): Promise<Response> => {
       }];
     }
 
-    // Determine email subject and content based on booking type
     let customerSubject: string;
     let customerHeading: string;
     let customerMessage: string;
@@ -193,7 +222,6 @@ const handler = async (req: Request): Promise<Response> => {
       customerMessage = "Your reservation has been confirmed! Here are the details:";
     }
 
-    // Send customer confirmation email
     const customerEmailHtml = `
       <!DOCTYPE html>
       <html>
@@ -285,7 +313,7 @@ const handler = async (req: Request): Promise<Response> => {
       console.log("send-booking-notification: Customer email sent successfully");
     }
 
-    // Send host notification email (skip for promotions since the host already knows about the cancellation)
+    // Send host notification email (skip for promotions since the host already knows)
     if (hostEmail && !isPromotion) {
       const hostSubject = isWaitlist
         ? `New Waitlist Entry - ${slot.name}`
@@ -371,9 +399,8 @@ const handler = async (req: Request): Promise<Response> => {
     );
   } catch (error: unknown) {
     console.error("send-booking-notification: Error", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return new Response(
-      JSON.stringify({ success: false, error: errorMessage }),
+      JSON.stringify({ success: false, error: "Internal server error" }),
       {
         status: 500,
         headers: { "Content-Type": "application/json", ...corsHeaders },

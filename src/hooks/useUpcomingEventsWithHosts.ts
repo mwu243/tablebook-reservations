@@ -45,12 +45,12 @@ export function useUpcomingEventsWithHosts(limit = 10) {
       
       if (hostUserIds.length > 0) {
         const { data: profiles } = await supabase
-          .from('user_profiles')
+          .from('host_display_names' as any)
           .select('user_id, display_name')
           .in('user_id', hostUserIds);
 
         if (profiles) {
-          profiles.forEach(p => hostProfiles.set(p.user_id, p.display_name));
+          (profiles as any[]).forEach((p: any) => hostProfiles.set(p.user_id, p.display_name));
         }
       }
 
