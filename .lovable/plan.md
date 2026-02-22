@@ -1,44 +1,42 @@
 
 
-# Site-Wide Password Gate
+## Changes
 
-## Overview
-Add a simple password screen that blocks access to the entire website until the correct password (MMMSGD2027) is entered. This is completely separate from the existing user signup/login system -- it acts as a front door to the site itself.
+### 1. Allow waitlist for Lottery events
 
-## How It Works
-- When anyone visits the site, they see a password prompt before anything else
-- After entering the correct password, access is granted and stored in `sessionStorage` so they don't have to re-enter it on every page navigation
-- Closing the browser tab/window clears the session, requiring the password again on next visit
-- The existing signup/login flow remains unchanged inside the site
+Currently the "Enable Waitlist" toggle is only shown when `bookingMode === 'fcfs'` (line 336 in `AvailabilityManager.tsx`). The fix is to remove that condition so the waitlist toggle appears for both FCFS and Lottery modes. The preview text will also be updated to show "Waitlist enabled" for both modes.
 
-## Security Note
-The password is checked client-side, which is appropriate for a simple access gate (not protecting sensitive data beyond what RLS already secures). The password is stored as a hashed constant in the code rather than plaintext for basic obfuscation.
+### 2. Forgot Password flow
 
-## Technical Details
+Add a complete password reset workflow:
 
-### New File: `src/components/SitePasswordGate.tsx`
-- A full-screen overlay with a password input and submit button
-- Compares input against the hardcoded password "MMMSGD2027"
-- On success, stores a flag in `sessionStorage` and renders `children`
-- On failure, shows an error message
+- **"Forgot password?" link** on the Sign In tab of the Auth page, below the password field
+- **Forgot password form**: When clicked, replaces the sign-in form with an email input that calls `supabase.auth.resetPasswordForEmail()` with a redirect to `/reset-password`
+- **New `/reset-password` page**: A dedicated page that detects the `type=recovery` token in the URL hash, then shows a "Set new password" form that calls `supabase.auth.updateUser({ password })`
+- **New route** in `App.tsx` for `/reset-password`
 
-### Modified File: `src/App.tsx`
-- Wrap the entire app content inside `<SitePasswordGate>` so every route is gated:
+---
 
-```
-<SitePasswordGate>
-  <QueryClientProvider ...>
-    <AuthProvider>
-      ...all routes...
-    </AuthProvider>
-  </QueryClientProvider>
-</SitePasswordGate>
-```
+### Technical Details
 
-### File Summary
+**Files to modify:**
 
-| File | Change |
-|------|--------|
-| `src/components/SitePasswordGate.tsx` | New component -- password prompt UI with sessionStorage persistence |
-| `src/App.tsx` | Wrap entire app in `<SitePasswordGate>` |
+1. **`src/components/admin/AvailabilityManager.tsx`**
+   - Remove the `{bookingMode === 'fcfs' && ...}` conditional around the waitlist toggle (line 336) so it renders for all booking modes
+   - Update the preview text condition on line 370 from `waitlistEnabled && bookingMode === 'fcfs'` to just `waitlistEnabled`
+
+2. **`src/pages/Auth.tsx`**
+   - Add a `forgotPassword` state to toggle between sign-in and forgot-password views
+   - Add a "Forgot password?" link below the password field in the Sign In tab
+   - When active, show an email-only form that calls `supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + '/reset-password' })`
+   - Show a success message after submission telling the user to check their inbox
+
+3. **`src/pages/ResetPassword.tsx`** (new file)
+   - On mount, listen for `supabase.auth.onAuthStateChange` with `PASSWORD_RECOVERY` event
+   - Show a form with new password + confirm password fields
+   - On submit, call `supabase.auth.updateUser({ password })` 
+   - On success, redirect to `/` with a success toast
+
+4. **`src/App.tsx`**
+   - Import and add a `<Route path="/reset-password" element={<ResetPassword />} />` route
 
