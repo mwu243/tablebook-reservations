@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ViewMode } from '@/lib/types';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { UtensilsCrossed, Shield, LogIn, LogOut, User, Settings } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { ProfileSettingsDialog } from './ProfileSettingsDialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,6 +23,7 @@ interface NavbarProps {
 export function Navbar({ viewMode, onViewModeChange }: NavbarProps) {
   const navigate = useNavigate();
   const { user, isAdmin, signOut } = useAuth();
+  const [profileOpen, setProfileOpen] = useState(false);
 
   const handleSignOut = async () => {
     await signOut();
@@ -91,6 +94,10 @@ export function Navbar({ viewMode, onViewModeChange }: NavbarProps) {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setProfileOpen(true)}>
+                  <User className="mr-2 h-4 w-4" />
+                  Profile Settings
+                </DropdownMenuItem>
                 {isAdmin && (
                   <DropdownMenuItem onClick={() => navigate('/master-admin')}>
                     <Settings className="mr-2 h-4 w-4" />
@@ -111,6 +118,7 @@ export function Navbar({ viewMode, onViewModeChange }: NavbarProps) {
           )}
         </div>
       </div>
+      <ProfileSettingsDialog open={profileOpen} onOpenChange={setProfileOpen} />
     </header>
   );
 }
