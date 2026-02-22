@@ -210,6 +210,7 @@ Deno.serve(async (req) => {
 
     console.log('Sending webhook to:', webhookUrl);
     console.log('Payload:', JSON.stringify(payload));
+    console.log('Webhook secret present:', !!webhookSecret, 'length:', webhookSecret?.length);
 
     let webhookResponse: Response;
     try {
