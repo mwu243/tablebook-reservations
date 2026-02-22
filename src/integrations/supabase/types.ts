@@ -22,7 +22,9 @@ export type Database = {
           date: string
           description: string | null
           end_time: string | null
+          estimated_cost_per_person: number | null
           id: string
+          location: string | null
           name: string
           time: string
           total_tables: number
@@ -36,7 +38,9 @@ export type Database = {
           date: string
           description?: string | null
           end_time?: string | null
+          estimated_cost_per_person?: number | null
           id?: string
+          location?: string | null
           name?: string
           time: string
           total_tables?: number
@@ -50,7 +54,9 @@ export type Database = {
           date?: string
           description?: string | null
           end_time?: string | null
+          estimated_cost_per_person?: number | null
           id?: string
+          location?: string | null
           name?: string
           time?: string
           total_tables?: number
