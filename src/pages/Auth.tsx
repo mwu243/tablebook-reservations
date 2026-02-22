@@ -2,13 +2,14 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { UtensilsCrossed, Loader2, AlertCircle, CreditCard } from 'lucide-react';
+import { UtensilsCrossed, Loader2, AlertCircle, CreditCard, ArrowLeft } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
 const signInSchema = z.object({
@@ -44,6 +45,9 @@ export default function Auth() {
   const [zelleIdentifier, setZelleIdentifier] = useState('');
   const [consentChecked, setConsentChecked] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotSent, setForgotSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<{ 
     fullName?: string;
@@ -163,6 +167,25 @@ export default function Auth() {
     setValidationErrors({});
   };
 
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!forgotEmail || !z.string().email().safeParse(forgotEmail).success) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+    setIsLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setIsLoading(false);
+    if (error) {
+      setError(error.message);
+    } else {
+      setForgotSent(true);
+    }
+  };
+
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -196,66 +219,130 @@ export default function Auth() {
           </TabsList>
           
           <TabsContent value="signin">
-            <form onSubmit={handleSignIn}>
-              <CardHeader>
-                <CardTitle>Welcome back</CardTitle>
-                <CardDescription>Sign in to access your account and reservations</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {error && (
-                  <Alert variant="destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription>{error}</AlertDescription>
-                  </Alert>
-                )}
-                <div className="space-y-2">
-                  <Label htmlFor="signin-email">Email</Label>
-                  <Input
-                    id="signin-email"
-                    type="email"
-                    placeholder="Enter your email"
-                    value={email}
-                    onChange={(e) => {
-                      setEmail(e.target.value);
-                      clearFormErrors();
-                    }}
-                    className={validationErrors.email ? 'border-destructive' : ''}
-                  />
-                  {validationErrors.email && (
-                    <p className="text-sm text-destructive">{validationErrors.email}</p>
+            {showForgotPassword ? (
+              <form onSubmit={handleForgotPassword}>
+                <CardHeader>
+                  <CardTitle>Reset your password</CardTitle>
+                  <CardDescription>Enter your email and we'll send you a reset link</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {error && (
+                    <Alert variant="destructive">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>{error}</AlertDescription>
+                    </Alert>
                   )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signin-password">Password</Label>
-                  <Input
-                    id="signin-password"
-                    type="password"
-                    placeholder="Enter your password"
-                    value={password}
-                    onChange={(e) => {
-                      setPassword(e.target.value);
-                      clearFormErrors();
-                    }}
-                    className={validationErrors.password ? 'border-destructive' : ''}
-                  />
-                  {validationErrors.password && (
-                    <p className="text-sm text-destructive">{validationErrors.password}</p>
-                  )}
-                </div>
-              </CardContent>
-              <CardFooter>
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Signing in...
-                    </>
+                  {forgotSent ? (
+                    <Alert>
+                      <AlertDescription>
+                        Check your inbox for a password reset link. If you don't see it, check your spam folder.
+                      </AlertDescription>
+                    </Alert>
                   ) : (
-                    'Sign In'
+                    <div className="space-y-2">
+                      <Label htmlFor="forgot-email">Email</Label>
+                      <Input
+                        id="forgot-email"
+                        type="email"
+                        placeholder="Enter your email"
+                        value={forgotEmail}
+                        onChange={(e) => { setForgotEmail(e.target.value); setError(null); }}
+                      />
+                    </div>
                   )}
-                </Button>
-              </CardFooter>
-            </form>
+                </CardContent>
+                <CardFooter className="flex flex-col gap-3">
+                  {!forgotSent && (
+                    <Button type="submit" className="w-full" disabled={isLoading}>
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        'Send Reset Link'
+                      )}
+                    </Button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => { setShowForgotPassword(false); setForgotSent(false); setError(null); }}
+                    className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
+                  >
+                    <ArrowLeft className="h-3 w-3" />
+                    Back to sign in
+                  </button>
+                </CardFooter>
+              </form>
+            ) : (
+              <form onSubmit={handleSignIn}>
+                <CardHeader>
+                  <CardTitle>Welcome back</CardTitle>
+                  <CardDescription>Sign in to access your account and reservations</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {error && (
+                    <Alert variant="destructive">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>{error}</AlertDescription>
+                    </Alert>
+                  )}
+                  <div className="space-y-2">
+                    <Label htmlFor="signin-email">Email</Label>
+                    <Input
+                      id="signin-email"
+                      type="email"
+                      placeholder="Enter your email"
+                      value={email}
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        clearFormErrors();
+                      }}
+                      className={validationErrors.email ? 'border-destructive' : ''}
+                    />
+                    {validationErrors.email && (
+                      <p className="text-sm text-destructive">{validationErrors.email}</p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="signin-password">Password</Label>
+                    <Input
+                      id="signin-password"
+                      type="password"
+                      placeholder="Enter your password"
+                      value={password}
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        clearFormErrors();
+                      }}
+                      className={validationErrors.password ? 'border-destructive' : ''}
+                    />
+                    {validationErrors.password && (
+                      <p className="text-sm text-destructive">{validationErrors.password}</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setShowForgotPassword(true); setError(null); }}
+                    className="text-sm text-accent hover:underline"
+                  >
+                    Forgot password?
+                  </button>
+                </CardContent>
+                <CardFooter>
+                  <Button type="submit" className="w-full" disabled={isLoading}>
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Signing in...
+                      </>
+                    ) : (
+                      'Sign In'
+                    )}
+                  </Button>
+                </CardFooter>
+              </form>
+            )}
           </TabsContent>
           
           <TabsContent value="signup">

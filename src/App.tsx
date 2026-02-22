@@ -9,6 +9,7 @@ import SitePasswordGate from "@/components/SitePasswordGate";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import MasterAdmin from "./pages/MasterAdmin";
+import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 
 const App = () => {
@@ -26,6 +27,7 @@ const App = () => {
                 <Route path="/" element={<Index />} />
                 <Route path="/auth" element={<Auth />} />
                 <Route path="/master-admin" element={<MasterAdmin />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
