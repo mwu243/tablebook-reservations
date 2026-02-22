@@ -213,8 +213,12 @@ export function useUpdateAvailabilitySlot() {
       queryClient.invalidateQueries({ queryKey: ['user-owned-slots'] });
       queryClient.invalidateQueries({ queryKey: ['month-availability'] });
       queryClient.invalidateQueries({ queryKey: ['owner-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-all-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-lottery-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-waitlist-entries'] });
       queryClient.invalidateQueries({ queryKey: ['upcoming-events-with-hosts'] });
       queryClient.invalidateQueries({ queryKey: ['upcoming-slots'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
     },
   });
 }
