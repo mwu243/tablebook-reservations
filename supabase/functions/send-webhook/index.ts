@@ -91,10 +91,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Get host's webhook URL
+    // Get host's webhook URL and profile info
     const { data: hostProfile } = await adminClient
       .from('user_profiles')
-      .select('webhook_url')
+      .select('webhook_url, venmo_username, zelle_identifier, display_name')
       .eq('user_id', user.id)
       .single();
 
@@ -167,8 +167,8 @@ Deno.serve(async (req) => {
     const consentedParticipants: Array<{
       name: string;
       email: string;
-      venmo_username: string | null;
-      zelle_identifier: string | null;
+      venmo: string | null;
+      zelle: string | null;
     }> = [];
     let excludedCount = 0;
 
@@ -178,40 +178,49 @@ Deno.serve(async (req) => {
         consentedParticipants.push({
           name: booking.customer_name,
           email: booking.customer_email,
-          venmo_username: profile.venmo_username,
-          zelle_identifier: profile.zelle_identifier,
+          venmo: profile.venmo_username,
+          zelle: profile.zelle_identifier,
         });
       } else {
         excludedCount++;
       }
     }
 
-    // Format time for payload
-    const [hours, minutes] = slot.time.split(':');
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour % 12 || 12;
-    const formattedTime = `${displayHour}:${minutes} ${ampm}`;
-
     const payload = {
-      event_name: slot.name,
-      event_date: slot.date,
-      event_time: formattedTime,
-      participants: consentedParticipants,
+      host: {
+        email: user.email,
+        name: hostProfile?.display_name || user.user_metadata?.display_name || undefined,
+        venmo: hostProfile?.venmo_username || undefined,
+        zelle: hostProfile?.zelle_identifier || undefined,
+      },
+      participants: consentedParticipants.map(p => ({
+        email: p.email,
+        name: p.name || undefined,
+        venmo: p.venmo || undefined,
+        zelle: p.zelle || undefined,
+      })),
+      restaurant_name: slot.name,
     };
 
     // Send webhook with timeout
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
+    const webhookSecret = Deno.env.get('KANYON_WEBHOOK_SECRET');
+
     console.log('Sending webhook to:', webhookUrl);
     console.log('Payload:', JSON.stringify(payload));
 
     let webhookResponse: Response;
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (webhookSecret) {
+        headers['X-Webhook-Secret'] = webhookSecret;
+      }
+
       webhookResponse = await fetch(webhookUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(payload),
         signal: controller.signal,
       });
