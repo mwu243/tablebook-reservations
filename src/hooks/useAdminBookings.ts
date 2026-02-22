@@ -116,11 +116,9 @@ export function useAdminConfirmLotteryWinner() {
 
       if (bookingError) throw bookingError;
 
-      // Increment booked_tables
+      // Use RPC to increment booked_tables with validation
       const { error: updateError } = await supabase
-        .from('availability_slots')
-        .update({ booked_tables: slot.booked_tables + 1 })
-        .eq('id', slotId);
+        .rpc('increment_booked_tables', { slot_id: slotId });
 
       if (updateError) throw updateError;
 
@@ -217,11 +215,9 @@ export function useAdminPickRandomWinner() {
         if (loserError) throw loserError;
       }
 
-      // Update booked_tables count
+      // Use RPC to increment booked_tables with validation
       const { error: updateError } = await supabase
-        .from('availability_slots')
-        .update({ booked_tables: slot.booked_tables + actualWinnersCount })
-        .eq('id', slotId);
+        .rpc('increment_booked_tables', { slot_id: slotId, amount: actualWinnersCount });
 
       if (updateError) throw updateError;
 

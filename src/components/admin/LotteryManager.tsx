@@ -46,20 +46,6 @@ export function LotteryManager() {
   // Confirm winner mutation
   const confirmWinner = useMutation({
     mutationFn: async ({ bookingId, slotId }: { bookingId: string; slotId: string }) => {
-      // Get current slot to update booked_tables
-      const { data: slot, error: slotError } = await supabase
-        .from('availability_slots')
-        .select('booked_tables, total_tables')
-        .eq('id', slotId)
-        .single();
-
-      if (slotError) throw slotError;
-      if (!slot) throw new Error('Slot not found');
-
-      if (slot.booked_tables >= slot.total_tables) {
-        throw new Error('No tables available - slot is fully booked');
-      }
-
       // Update booking status to confirmed
       const { error: bookingError } = await supabase
         .from('bookings')
@@ -68,11 +54,9 @@ export function LotteryManager() {
 
       if (bookingError) throw bookingError;
 
-      // Increment booked_tables
+      // Use RPC to increment booked_tables with validation
       const { error: updateError } = await supabase
-        .from('availability_slots')
-        .update({ booked_tables: slot.booked_tables + 1 })
-        .eq('id', slotId);
+        .rpc('increment_booked_tables', { slot_id: slotId });
 
       if (updateError) throw updateError;
 
@@ -143,31 +127,30 @@ export function LotteryManager() {
       const winners = shuffled.slice(0, actualWinnersCount);
       const losers = shuffled.slice(actualWinnersCount);
 
-      // Update winners to confirmed
+      // Update winners to confirmed (RLS allows slot owners to update bookings)
       const winnerIds = winners.map(w => w.id);
-      const { error: winnerError } = await supabase
-        .from('bookings')
-        .update({ status: 'confirmed' })
-        .in('id', winnerIds);
-
-      if (winnerError) throw winnerError;
+      for (const wId of winnerIds) {
+        const { error } = await supabase
+          .from('bookings')
+          .update({ status: 'confirmed' })
+          .eq('id', wId);
+        if (error) throw error;
+      }
 
       // Optionally reject others
       if (rejectOthers && losers.length > 0) {
-        const loserIds = losers.map(l => l.id);
-        const { error: loserError } = await supabase
-          .from('bookings')
-          .update({ status: 'cancelled' })
-          .in('id', loserIds);
-
-        if (loserError) throw loserError;
+        for (const l of losers) {
+          const { error } = await supabase
+            .from('bookings')
+            .update({ status: 'cancelled' })
+            .eq('id', l.id);
+          if (error) throw error;
+        }
       }
 
-      // Update booked_tables count
+      // Use RPC to increment booked_tables with validation
       const { error: updateError } = await supabase
-        .from('availability_slots')
-        .update({ booked_tables: slot.booked_tables + actualWinnersCount })
-        .eq('id', slotId);
+        .rpc('increment_booked_tables', { slot_id: slotId, amount: actualWinnersCount });
 
       if (updateError) throw updateError;
 
