@@ -204,14 +204,32 @@ Deno.serve(async (req) => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-    const webhookResponse = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
+    console.log('Sending webhook to:', webhookUrl);
+    console.log('Payload:', JSON.stringify(payload));
+
+    let webhookResponse: Response;
+    try {
+      webhookResponse = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+    } catch (fetchErr) {
+      console.error('Webhook fetch failed:', fetchErr);
+      return new Response(JSON.stringify({ 
+        error: `Webhook request failed: ${fetchErr instanceof Error ? fetchErr.message : 'Unknown error'}` 
+      }), {
+        status: 502,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     clearTimeout(timeoutId);
+
+    const responseBody = await webhookResponse.text();
+    console.log('Webhook response status:', webhookResponse.status);
+    console.log('Webhook response body:', responseBody);
 
     const success = webhookResponse.ok;
 
@@ -220,11 +238,13 @@ Deno.serve(async (req) => {
       sent_count: consentedParticipants.length,
       excluded_count: excludedCount,
       webhook_status: webhookResponse.status,
+      webhook_response: success ? undefined : responseBody,
     }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (err) {
+    console.error('Send-webhook error:', err);
     return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -33,7 +33,8 @@ export function SendWebhookButton({ slotId, slotName }: SendWebhookButtonProps) 
           : '';
         toast.success(msg + excluded);
       } else {
-        toast.error('Webhook call failed. Check your webhook URL.');
+        const detail = data?.webhook_response ? `: ${data.webhook_response}` : '';
+        toast.error(`Webhook failed (status ${data?.webhook_status})${detail}`);
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to send webhook');
