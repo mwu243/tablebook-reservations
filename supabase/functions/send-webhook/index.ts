@@ -1,9 +1,14 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
+
+const SendWebhookSchema = z.object({
+  slotId: z.string().uuid(),
+});
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -35,13 +40,17 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { slotId } = await req.json();
-    if (!slotId) {
-      return new Response(JSON.stringify({ error: 'slotId is required' }), {
+    // Input validation
+    const rawBody = await req.json();
+    const validation = SendWebhookSchema.safeParse(rawBody);
+    if (!validation.success) {
+      return new Response(JSON.stringify({ error: 'Invalid input' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    const { slotId } = validation.data;
 
     // Service client for privileged queries
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
@@ -77,6 +86,23 @@ Deno.serve(async (req) => {
     const webhookUrl = hostProfile?.webhook_url;
     if (!webhookUrl) {
       return new Response(JSON.stringify({ error: 'No webhook URL configured. Please set one in Webhook Settings.' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Validate webhook URL to prevent SSRF
+    try {
+      const parsed = new URL(webhookUrl);
+      const blockedHosts = ['localhost', '127.0.0.1', '0.0.0.0', '::1', '169.254.169.254'];
+      if (blockedHosts.includes(parsed.hostname)) {
+        return new Response(JSON.stringify({ error: 'Invalid webhook URL' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    } catch {
+      return new Response(JSON.stringify({ error: 'Invalid webhook URL format' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
