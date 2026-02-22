@@ -332,25 +332,23 @@ export function AvailabilityManager() {
           </RadioGroup>
         </div>
 
-        {/* Waitlist Toggle - Only show for FCFS mode */}
-        {bookingMode === 'fcfs' && (
-          <div className="flex items-center justify-between rounded-lg border p-4">
-            <div className="space-y-0.5">
-              <Label htmlFor="waitlist" className="flex items-center gap-2 font-medium">
-                <Users className="h-4 w-4" />
-                Enable Waitlist
-              </Label>
-              <p className="text-sm text-muted-foreground">
-                When fully booked, customers can join a waitlist. If someone cancels, the next person is automatically promoted and notified.
-              </p>
-            </div>
-            <Switch
-              id="waitlist"
-              checked={waitlistEnabled}
-              onCheckedChange={setWaitlistEnabled}
-            />
+        {/* Waitlist Toggle */}
+        <div className="flex items-center justify-between rounded-lg border p-4">
+          <div className="space-y-0.5">
+            <Label htmlFor="waitlist" className="flex items-center gap-2 font-medium">
+              <Users className="h-4 w-4" />
+              Enable Waitlist
+            </Label>
+            <p className="text-sm text-muted-foreground">
+              When fully booked, customers can join a waitlist. If someone cancels, the next person is automatically promoted and notified.
+            </p>
           </div>
-        )}
+          <Switch
+            id="waitlist"
+            checked={waitlistEnabled}
+            onCheckedChange={setWaitlistEnabled}
+          />
+        </div>
 
         {/* Preview */}
         {date && (
@@ -367,7 +365,7 @@ export function AvailabilityManager() {
             )}
             <p className="mt-1 text-sm text-muted-foreground">
               {format(date, 'MMMM d, yyyy')} • {formatTimeDisplay(startTime)} – {formatTimeDisplay(endTime)} • {parseInt(totalSpotsInput) || 1} spot{(parseInt(totalSpotsInput) || 1) > 1 ? 's' : ''} • {bookingMode === 'fcfs' ? 'First Come, First Served' : 'Lottery'}
-              {waitlistEnabled && bookingMode === 'fcfs' && ' • Waitlist enabled'}
+              {waitlistEnabled && ' • Waitlist enabled'}
             </p>
           </div>
         )}
