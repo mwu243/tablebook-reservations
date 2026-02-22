@@ -1,6 +1,21 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
+function isPrivateOrLocalHost(hostname: string): boolean {
+  if (['localhost', '0.0.0.0', '::1'].includes(hostname)) return true;
+  if (hostname.startsWith('127.')) return true;
+  const ipv4Match = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (ipv4Match) {
+    const [, a, b] = ipv4Match.map(Number);
+    if (a === 10) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 169 && b === 254) return true;
+  }
+  if (hostname.startsWith('fc') || hostname.startsWith('fd') || hostname.startsWith('fe80')) return true;
+  return false;
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
@@ -94,8 +109,13 @@ Deno.serve(async (req) => {
     // Validate webhook URL to prevent SSRF
     try {
       const parsed = new URL(webhookUrl);
-      const blockedHosts = ['localhost', '127.0.0.1', '0.0.0.0', '::1', '169.254.169.254'];
-      if (blockedHosts.includes(parsed.hostname)) {
+      if (!['http:', 'https:'].includes(parsed.protocol)) {
+        return new Response(JSON.stringify({ error: 'Invalid webhook URL protocol' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      if (isPrivateOrLocalHost(parsed.hostname)) {
         return new Response(JSON.stringify({ error: 'Invalid webhook URL' }), {
           status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -180,12 +200,18 @@ Deno.serve(async (req) => {
       participants: consentedParticipants,
     };
 
-    // Send webhook
+    // Send webhook with timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
     const webhookResponse = await fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      signal: controller.signal,
     });
+
+    clearTimeout(timeoutId);
 
     const success = webhookResponse.ok;
 
