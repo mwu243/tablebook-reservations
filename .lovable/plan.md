@@ -1,42 +1,41 @@
 
 
-## Changes
+## Problem 1: Calendar not updating after editing an event date
 
-### 1. Allow waitlist for Lottery events
+The `useUpdateAvailabilitySlot` mutation invalidates some query caches on success, but it's missing two key ones:
+- `upcoming-events-with-hosts` (used by the "Book a Table" upcoming events list)
+- `upcoming-slots` (used by the all upcoming slots query)
 
-Currently the "Enable Waitlist" toggle is only shown when `bookingMode === 'fcfs'` (line 336 in `AvailabilityManager.tsx`). The fix is to remove that condition so the waitlist toggle appears for both FCFS and Lottery modes. The preview text will also be updated to show "Waitlist enabled" for both modes.
+This means when you change the date of an event, the "Book a Table" tab still shows stale data until the next automatic refetch (10-30 seconds later).
 
-### 2. Forgot Password flow
+**Fix:** Add the missing cache invalidation keys to the `onSuccess` callback in `useUpdateAvailabilitySlot`.
 
-Add a complete password reset workflow:
+## Problem 2: Notify participants when an event is changed
 
-- **"Forgot password?" link** on the Sign In tab of the Auth page, below the password field
-- **Forgot password form**: When clicked, replaces the sign-in form with an email input that calls `supabase.auth.resetPasswordForEmail()` with a redirect to `/reset-password`
-- **New `/reset-password` page**: A dedicated page that detects the `type=recovery` token in the URL hash, then shows a "Set new password" form that calls `supabase.auth.updateUser({ password })`
-- **New route** in `App.tsx` for `/reset-password`
+Currently, no notification is sent when a host edits an event. We need to:
+
+1. **Extend the `send-booking-notification` edge function** to handle a new `bookingType: "event_update"` that:
+   - Fetches all confirmed bookings and waitlist entries for the slot
+   - Sends each participant an "Event Updated" email with the new details (date, time, location, etc.)
+   - Sends updated .ics calendar files to confirmed participants
+
+2. **Trigger the notification from `EditSlotModal`** after a successful update by calling the edge function with the slot ID and the new `event_update` type.
 
 ---
 
 ### Technical Details
 
-**Files to modify:**
+**File: `src/hooks/useAvailabilitySlots.ts`**
+- In `useUpdateAvailabilitySlot`'s `onSuccess`, add invalidation for `['upcoming-events-with-hosts']` and `['upcoming-slots']`
 
-1. **`src/components/admin/AvailabilityManager.tsx`**
-   - Remove the `{bookingMode === 'fcfs' && ...}` conditional around the waitlist toggle (line 336) so it renders for all booking modes
-   - Update the preview text condition on line 370 from `waitlistEnabled && bookingMode === 'fcfs'` to just `waitlistEnabled`
+**File: `supabase/functions/send-booking-notification/index.ts`**
+- Add `"event_update"` to the `bookingType` enum in the validation schema
+- Make `customerName`, `customerEmail`, and `partySize` optional when `bookingType` is `"event_update"`
+- Add a new code path for `event_update` that:
+  - Fetches all confirmed bookings for the slot (using service role)
+  - Fetches all waitlist entries for the slot
+  - Sends each person an "Event Updated" email with the new event details and an updated .ics file for confirmed participants
 
-2. **`src/pages/Auth.tsx`**
-   - Add a `forgotPassword` state to toggle between sign-in and forgot-password views
-   - Add a "Forgot password?" link below the password field in the Sign In tab
-   - When active, show an email-only form that calls `supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + '/reset-password' })`
-   - Show a success message after submission telling the user to check their inbox
-
-3. **`src/pages/ResetPassword.tsx`** (new file)
-   - On mount, listen for `supabase.auth.onAuthStateChange` with `PASSWORD_RECOVERY` event
-   - Show a form with new password + confirm password fields
-   - On submit, call `supabase.auth.updateUser({ password })` 
-   - On success, redirect to `/` with a success toast
-
-4. **`src/App.tsx`**
-   - Import and add a `<Route path="/reset-password" element={<ResetPassword />} />` route
+**File: `src/components/admin/EditSlotModal.tsx`**
+- After a successful `updateSlot.mutateAsync()`, fire-and-forget call to `supabase.functions.invoke('send-booking-notification', { body: { slotId, bookingType: 'event_update' } })` to notify all participants
 
