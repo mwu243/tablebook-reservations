@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
   DialogContent,
@@ -11,8 +12,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { useUserProfile, useUpdateUserProfile, useCreateUserProfile } from '@/hooks/useUserProfile';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 interface ProfileSettingsDialogProps {
@@ -22,14 +24,14 @@ interface ProfileSettingsDialogProps {
 
 export function ProfileSettingsDialog({ open, onOpenChange }: ProfileSettingsDialogProps) {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const { data: profile, isLoading } = useUserProfile();
-  const updateProfile = useUpdateUserProfile();
-  const createProfile = useCreateUserProfile();
 
   const [displayName, setDisplayName] = useState('');
   const [venmoUsername, setVenmoUsername] = useState('');
   const [zelleIdentifier, setZelleIdentifier] = useState('');
   const [paymentSharingConsent, setPaymentSharingConsent] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (profile) {
@@ -43,34 +45,32 @@ export function ProfileSettingsDialog({ open, onOpenChange }: ProfileSettingsDia
   const handleSave = async () => {
     if (!user?.id) return;
 
+    setIsSaving(true);
     try {
-      if (profile) {
-        await updateProfile.mutateAsync({
-          display_name: displayName.trim() || null,
-          venmo_username: venmoUsername.trim() || null,
-          zelle_identifier: zelleIdentifier.trim() || null,
-          payment_sharing_consent: paymentSharingConsent,
-        });
-      } else {
-        await createProfile.mutateAsync({
+      const { error } = await supabase
+        .from('user_profiles')
+        .upsert({
           user_id: user.id,
           display_name: displayName.trim() || null,
           venmo_username: venmoUsername.trim() || null,
           zelle_identifier: zelleIdentifier.trim() || null,
-        });
-        // Update consent separately since create doesn't include it
-        await updateProfile.mutateAsync({
           payment_sharing_consent: paymentSharingConsent,
-        });
-      }
+        }, { onConflict: 'user_id' });
+
+      if (error) throw error;
+
+      queryClient.invalidateQueries({ queryKey: ['user-profile', user.id] });
       toast.success('Profile updated successfully');
       onOpenChange(false);
     } catch (error) {
+      console.error('Profile save error:', error);
       toast.error('Failed to update profile');
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const isSaving = updateProfile.isPending || createProfile.isPending;
+  
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
