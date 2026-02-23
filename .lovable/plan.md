@@ -1,41 +1,65 @@
 
 
-## Problem 1: Calendar not updating after editing an event date
+# Fix: Date Display Timezone Bug Across Entire Application
 
-The `useUpdateAvailabilitySlot` mutation invalidates some query caches on success, but it's missing two key ones:
-- `upcoming-events-with-hosts` (used by the "Book a Table" upcoming events list)
-- `upcoming-slots` (used by the all upcoming slots query)
+## Root Cause
 
-This means when you change the date of an event, the "Book a Table" tab still shows stale data until the next automatic refetch (10-30 seconds later).
+Every component that displays a slot date uses `new Date("2026-02-25")`, which JavaScript interprets as **UTC midnight**. In US timezones (CST, EST, PST, etc.), this shifts the date **one day back** when displayed with `format()` (which uses local time).
 
-**Fix:** Add the missing cache invalidation keys to the `onSuccess` callback in `useUpdateAvailabilitySlot`.
+This means:
+- The database stores "2026-02-25"
+- The UI displays "Feb 24" (wrong)
+- The edit modal (already fixed) shows "Feb 25" (correct)
+- The user sees a mismatch and cannot effectively change dates
 
-## Problem 2: Notify participants when an event is changed
+## Solution
 
-Currently, no notification is sent when a host edits an event. We need to:
+Create a shared utility function for timezone-safe date parsing, then replace all `new Date(slot.date)` calls across the codebase.
 
-1. **Extend the `send-booking-notification` edge function** to handle a new `bookingType: "event_update"` that:
-   - Fetches all confirmed bookings and waitlist entries for the slot
-   - Sends each participant an "Event Updated" email with the new details (date, time, location, etc.)
-   - Sends updated .ics calendar files to confirmed participants
+### Step 1: Add utility function to `src/lib/utils.ts`
 
-2. **Trigger the notification from `EditSlotModal`** after a successful update by calling the edge function with the slot ID and the new `event_update` type.
+Add a `parseLocalDate(dateStr: string): Date` function that splits "YYYY-MM-DD" and constructs a local-midnight Date object:
+```typescript
+export function parseLocalDate(dateStr: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+```
 
----
+### Step 2: Update all affected files
 
-### Technical Details
+Replace every `new Date(slot.date)` / `new Date(event.date)` / `new Date(booking.availability_slots.date)` with `parseLocalDate(...)`:
 
-**File: `src/hooks/useAvailabilitySlots.ts`**
-- In `useUpdateAvailabilitySlot`'s `onSuccess`, add invalidation for `['upcoming-events-with-hosts']` and `['upcoming-slots']`
+**Files to update (6 files, ~14 occurrences total):**
 
-**File: `supabase/functions/send-booking-notification/index.ts`**
-- Add `"event_update"` to the `bookingType` enum in the validation schema
-- Make `customerName`, `customerEmail`, and `partySize` optional when `bookingType` is `"event_update"`
-- Add a new code path for `event_update` that:
-  - Fetches all confirmed bookings for the slot (using service role)
-  - Fetches all waitlist entries for the slot
-  - Sends each person an "Event Updated" email with the new event details and an updated .ics file for confirmed participants
+1. **`src/components/admin/SlotsManager.tsx`** (2 occurrences)
+   - Line 113: slot date display in list
+   - Line 174: slot date in delete dialog
 
-**File: `src/components/admin/EditSlotModal.tsx`**
-- After a successful `updateSlot.mutateAsync()`, fire-and-forget call to `supabase.functions.invoke('send-booking-notification', { body: { slotId, bookingType: 'event_update' } })` to notify all participants
+2. **`src/components/admin/ReservationsList.tsx`** (2 occurrences)
+   - Line 322: group date display
+   - Line 503: slot date in delete dialog
+
+3. **`src/components/admin/LotteryManager.tsx`** (1 occurrence)
+   - Line 302: slot date display
+
+4. **`src/components/customer/EventCard.tsx`** (1 occurrence)
+   - Line 91: event date display in discovery bar
+
+5. **`src/components/customer/MyReservations.tsx`** (3 occurrences)
+   - Line 166: confirmed booking date
+   - Line 245: waitlist entry date
+   - Line 299: lottery entry date
+
+6. **`src/components/customer/BookingModal.tsx`** (2 occurrences)
+   - Line 298: slot date in booking confirmation
+   - Line 381: slot date in waitlist confirmation
+
+Each file will import `parseLocalDate` from `@/lib/utils` and replace `new Date(dateString)` with `parseLocalDate(dateString)`.
+
+## Expected Outcome
+
+- All dates display correctly regardless of user timezone
+- The edit modal and list view show the same date (no mismatch)
+- Date changes via the edit modal will work correctly since the user sees the true date and can change it to a genuinely different value
 
