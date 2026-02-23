@@ -51,7 +51,9 @@ export function EditSlotModal({ open, onOpenChange, slot }: EditSlotModalProps) 
       setDescription(slot.description || '');
       setLocation(slot.location || '');
       setEstimatedCost(slot.estimated_cost_per_person?.toString() || '');
-      setDate(new Date(slot.date));
+      // Parse date without timezone shift: "2026-02-25" → local midnight
+      const [year, month, day] = slot.date.split('-').map(Number);
+      setDate(new Date(year, month - 1, day));
       setTime(slot.time.slice(0, 5));
       setEndTime(slot.end_time ? slot.end_time.slice(0, 5) : '');
       setTotalTablesInput(slot.total_tables.toString());
