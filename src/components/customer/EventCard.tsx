@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { UpcomingEventWithHost } from '@/hooks/useUpcomingEventsWithHosts';
+import { parseLocalDate } from '@/lib/utils';
 
 interface EventCardProps {
   event: UpcomingEventWithHost;
@@ -88,7 +89,7 @@ export function EventCard({ event, onBookClick }: EventCardProps) {
         <div className="mb-3 space-y-1.5 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <Calendar className="h-4 w-4" />
-            <span>{format(new Date(event.date), 'EEE, MMM d')}</span>
+            <span>{format(parseLocalDate(event.date), 'EEE, MMM d')}</span>
           </div>
           <div className="flex items-center gap-2">
             <Clock className="h-4 w-4" />

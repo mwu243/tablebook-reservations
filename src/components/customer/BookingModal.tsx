@@ -30,6 +30,7 @@ import { useCreateUserProfile, useUserProfile } from '@/hooks/useUserProfile';
 import { useLastCustomerName } from '@/hooks/useLastCustomerName';
 import { useAuthUser } from '@/hooks/useAuthUser';
 import { supabase } from '@/integrations/supabase/client';
+import { parseLocalDate } from '@/lib/utils';
 
 interface BookingModalProps {
   slot: AvailabilitySlot | null;
@@ -295,7 +296,7 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
             )}
             <div className="mt-2 flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Date</span>
-              <span className="font-medium">{format(new Date(slot.date), 'EEEE, MMMM d, yyyy')}</span>
+<span className="font-medium">{format(parseLocalDate(slot.date), 'EEEE, MMMM d, yyyy')}</span>
             </div>
             <div className="mt-2 flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Time</span>
@@ -378,7 +379,7 @@ export function BookingModal({ slot, partySize, onClose, isWaitlist = false }: B
             )}
             <div className="mt-2 flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Date</span>
-              <span className="font-medium">{format(new Date(slot.date), 'EEEE, MMMM d, yyyy')}</span>
+              <span className="font-medium">{format(parseLocalDate(slot.date), 'EEEE, MMMM d, yyyy')}</span>
             </div>
             <div className="mt-2 flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Time</span>
