@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from '@/hooks/use-toast';
 import { downloadICSFile } from '@/lib/icsGenerator';
+import { parseLocalDate } from '@/lib/utils';
 
 export function MyReservations() {
   const { data: bookings, isLoading: bookingsLoading } = useUserBookings();
@@ -163,7 +164,7 @@ export function MyReservations() {
                     <CalendarCheck className="h-4 w-4" />
                     {booking.availability_slots && (
                       <span>
-                        {format(new Date(booking.availability_slots.date), 'EEEE, MMMM d, yyyy')}
+                        {format(parseLocalDate(booking.availability_slots.date), 'EEEE, MMMM d, yyyy')}
                       </span>
                     )}
                   </div>
@@ -242,7 +243,7 @@ export function MyReservations() {
                     <CalendarCheck className="h-4 w-4" />
                     {entry.availability_slots && (
                       <span>
-                        {format(new Date(entry.availability_slots.date), 'EEEE, MMMM d, yyyy')}
+                        {format(parseLocalDate(entry.availability_slots.date), 'EEEE, MMMM d, yyyy')}
                       </span>
                     )}
                   </div>
@@ -296,7 +297,7 @@ export function MyReservations() {
                     <CalendarCheck className="h-4 w-4" />
                     {booking.availability_slots && (
                       <span>
-                        {format(new Date(booking.availability_slots.date), 'MMMM d, yyyy')}
+                        {format(parseLocalDate(booking.availability_slots.date), 'MMMM d, yyyy')}
                       </span>
                     )}
                   </div>

@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import { Booking } from '@/lib/types';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { parseLocalDate } from '@/lib/utils';
 
 export function LotteryManager() {
   const { data: lotteryEntries, isLoading } = useOwnerLotteryBookings();
@@ -299,7 +300,7 @@ export function LotteryManager() {
                   <div>
                     <h3 className="font-medium">{slot.name}</h3>
                     <p className="text-sm text-muted-foreground">
-                      {format(new Date(slot.date), 'EEEE, MMM d')} at {formatTime(slot.time)}
+                      {format(parseLocalDate(slot.date), 'EEEE, MMM d')} at {formatTime(slot.time)}
                       {slot.end_time && ` - ${formatTime(slot.end_time)}`}
                     </p>
                   </div>

@@ -18,6 +18,7 @@ import {
 import { toast } from 'sonner';
 import { AvailabilitySlot } from '@/lib/types';
 import { EditSlotModal } from './EditSlotModal';
+import { parseLocalDate } from '@/lib/utils';
 
 export function SlotsManager() {
   const { data: slots, isLoading } = useUserOwnedSlots();
@@ -110,7 +111,7 @@ export function SlotsManager() {
                   <div className="flex items-center gap-4 text-sm text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <Calendar className="h-3.5 w-3.5" />
-                      {format(new Date(slot.date), 'MMM d, yyyy')}
+                      {format(parseLocalDate(slot.date), 'MMM d, yyyy')}
                     </span>
                     <span className="flex items-center gap-1">
                       <Clock className="h-3.5 w-3.5" />
@@ -171,7 +172,7 @@ export function SlotsManager() {
                   This will permanently remove the{' '}
                   <strong>{deleteDialog.slot && formatTime(deleteDialog.slot.time)}</strong> slot on{' '}
                   <strong>
-                    {deleteDialog.slot && format(new Date(deleteDialog.slot.date), 'MMMM d, yyyy')}
+                    {deleteDialog.slot && format(parseLocalDate(deleteDialog.slot.date), 'MMMM d, yyyy')}
                   </strong>.
                 </p>
                 {deleteDialog.slot && deleteDialog.slot.booked_tables > 0 && (

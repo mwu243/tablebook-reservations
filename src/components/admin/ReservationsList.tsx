@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import type { AvailabilitySlot } from '@/lib/types';
+import { parseLocalDate } from '@/lib/utils';
 
 interface BookingWithSlot {
   id: string;
@@ -319,7 +320,7 @@ export function ReservationsList() {
               <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
                 <span className="flex items-center gap-1">
                   <Calendar className="h-3.5 w-3.5" />
-                  {format(new Date(group.date), 'MMM d, yyyy')}
+                  {format(parseLocalDate(group.date), 'MMM d, yyyy')}
                 </span>
                 <span className="flex items-center gap-1">
                   <Clock className="h-3.5 w-3.5" />
@@ -500,7 +501,7 @@ export function ReservationsList() {
                   This will permanently remove the{' '}
                   <strong>{deleteDialog.slot && formatTime(deleteDialog.slot.time)}</strong> slot on{' '}
                   <strong>
-                    {deleteDialog.slot && format(new Date(deleteDialog.slot.date), 'MMMM d, yyyy')}
+                    {deleteDialog.slot && format(parseLocalDate(deleteDialog.slot.date), 'MMMM d, yyyy')}
                   </strong>.
                 </p>
                 {deleteDialog.slot && deleteDialog.slot.booked_tables > 0 && (
