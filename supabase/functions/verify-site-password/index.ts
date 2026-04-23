@@ -90,7 +90,7 @@ Deno.serve(async (req) => {
     console.warn(`Failed site password attempt from IP: ${clientIP}`);
 
     return new Response(JSON.stringify({ success: false, error: 'Incorrect password' }), {
-      status: 401,
+      status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch {

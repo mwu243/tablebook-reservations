@@ -14,7 +14,7 @@ interface SitePasswordGateProps {
 const SitePasswordGate = ({ children }: SitePasswordGateProps) => {
   const [granted, setGranted] = useState(() => sessionStorage.getItem(SESSION_KEY) === "true");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState(false);
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   if (granted) return <>{children}</>;
@@ -22,7 +22,7 @@ const SitePasswordGate = ({ children }: SitePasswordGateProps) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError(false);
+    setError("");
 
     try {
       const { data, error: fnError } = await supabase.functions.invoke('verify-site-password', {
@@ -30,13 +30,13 @@ const SitePasswordGate = ({ children }: SitePasswordGateProps) => {
       });
 
       if (fnError || !data?.success) {
-        setError(true);
+        setError(data?.error || "Incorrect password");
       } else {
         sessionStorage.setItem(SESSION_KEY, "true");
         setGranted(true);
       }
     } catch {
-      setError(true);
+      setError("Unable to verify password. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -55,11 +55,11 @@ const SitePasswordGate = ({ children }: SitePasswordGateProps) => {
               type="password"
               placeholder="Password"
               value={password}
-              onChange={(e) => { setPassword(e.target.value); setError(false); }}
+              onChange={(e) => { setPassword(e.target.value); setError(""); }}
               autoFocus
               disabled={loading}
             />
-            {error && <p className="text-sm text-destructive">Incorrect password</p>}
+            {error && <p className="text-sm text-destructive">{error}</p>}
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "Verifying..." : "Enter"}
             </Button>
