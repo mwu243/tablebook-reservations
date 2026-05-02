@@ -380,9 +380,23 @@ export function LotteryManager() {
           </div>
         ) : (
           <div className="space-y-6">
-            {slotGroups.map(({ slot, entries }) => (
+            {slotGroups.map(({ slot, entries }) => {
+              const availableSpots = slot.total_tables - slot.booked_tables;
+              const selectedSet = selectedBySlot[slot.id] ?? new Set<string>();
+              const selectedCount = selectedSet.size;
+              const selectedBookings = entries.filter((e) => selectedSet.has(e.id));
+              const allSelected = entries.length > 0 && entries.every((e) => selectedSet.has(e.id));
+              const someSelected = selectedCount > 0 && !allSelected;
+              const toggleAll = () => {
+                setSelectedBySlot((prev) => ({
+                  ...prev,
+                  [slot.id]: allSelected ? new Set() : new Set(entries.map((e) => e.id)),
+                }));
+              };
+
+              return (
               <div key={slot.id} className="rounded-lg border border-border p-4">
-                <div className="mb-4 flex items-center justify-between">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <h3 className="font-medium">{slot.name}</h3>
                     <p className="text-sm text-muted-foreground">
@@ -390,41 +404,87 @@ export function LotteryManager() {
                       {slot.end_time && ` - ${formatTime(slot.end_time)}`}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="outline">
-                      {slot.total_tables - slot.booked_tables} spots left
+                      {availableSpots} spots left
                     </Badge>
                     <Button
                       size="sm"
                       variant="default"
                       className="bg-amber-600 hover:bg-amber-700"
-                      onClick={() => setRandomPickDialog({ 
-                        open: true, 
-                        slotId: slot.id, 
+                      onClick={() => setRandomPickDialog({
+                        open: true,
+                        slotId: slot.id,
                         slotName: slot.name,
-                        entries 
+                        entries,
+                        winnersCount: Math.min(1, availableSpots),
+                        availableSpots,
                       })}
-                      disabled={slot.booked_tables >= slot.total_tables || entries.length === 0}
+                      disabled={availableSpots <= 0 || entries.length === 0}
                     >
                       <Dices className="mr-1.5 h-4 w-4" />
-                      Pick Random Winner
+                      Pick Random Winner{availableSpots > 1 ? 's' : ''}
                     </Button>
                   </div>
                 </div>
 
+                {entries.length > 0 && (
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted/30 px-3 py-2">
+                    <label className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+                        onCheckedChange={toggleAll}
+                      />
+                      <span className="text-muted-foreground">
+                        {selectedCount > 0 ? `${selectedCount} selected` : 'Select all'}
+                      </span>
+                    </label>
+                    {selectedCount > 0 && (
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="ghost" onClick={() => clearSelected(slot.id)}>
+                          Clear
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => setConfirmSelectedDialog({
+                            open: true,
+                            slotId: slot.id,
+                            slotName: slot.name,
+                            bookings: selectedBookings,
+                          })}
+                          disabled={selectedCount > availableSpots}
+                        >
+                          <Check className="mr-1 h-4 w-4" />
+                          Confirm {selectedCount} Winner{selectedCount === 1 ? '' : 's'}
+                          {selectedCount > availableSpots && ` (only ${availableSpots} spots)`}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="space-y-2">
-                  {entries.map((entry) => (
+                  {entries.map((entry) => {
+                    const isSelected = selectedSet.has(entry.id);
+                    return (
                     <div
                       key={entry.id}
                       className="flex items-center justify-between rounded-md bg-muted/50 p-3 animate-fade-in"
                     >
-                      <div>
-                        <p className="font-medium">{entry.customer_name}</p>
-                        <p className="text-sm text-muted-foreground">{entry.customer_email}</p>
-                        <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <Users className="h-3 w-3" />
-                          {entry.party_size} {entry.party_size === 1 ? 'guest' : 'guests'}
-                        </p>
+                      <div className="flex items-center gap-3">
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => toggleSelected(slot.id, entry.id)}
+                          disabled={availableSpots <= 0}
+                        />
+                        <div>
+                          <p className="font-medium">{entry.customer_name}</p>
+                          <p className="text-sm text-muted-foreground">{entry.customer_email}</p>
+                          <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Users className="h-3 w-3" />
+                            {entry.party_size} {entry.party_size === 1 ? 'guest' : 'guests'}
+                          </p>
+                        </div>
                       </div>
                       <div className="flex gap-2">
                         <Button
@@ -438,17 +498,19 @@ export function LotteryManager() {
                         <Button
                           size="sm"
                           onClick={() => setConfirmDialog({ open: true, booking: entry })}
-                          disabled={slot.booked_tables >= slot.total_tables}
+                          disabled={availableSpots <= 0}
                         >
                           <Check className="mr-1 h-4 w-4" />
                           Select
                         </Button>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
