@@ -286,32 +286,50 @@ export function LotteryManager() {
       const result = await pickRandomWinner.mutateAsync({
         slotId: randomPickDialog.slotId,
         entries: randomPickDialog.entries,
-        winnersCount: 1,
+        winnersCount: randomPickDialog.winnersCount,
         rejectOthers: true,
       });
 
-      const winner = result.winners[0];
-      
       toast.success(
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2 font-medium">
             <Trophy className="h-4 w-4 text-amber-500" />
-            Winner Selected!
+            {result.winnersCount} Winner{result.winnersCount === 1 ? '' : 's'} Selected!
           </div>
           <div className="text-sm">
-            {winner.customer_name} ({winner.customer_email})
+            {result.winners.map((w) => w.customer_name).join(', ')}
           </div>
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <Mail className="h-3 w-3" />
-            Notification sent to winner
+            Notifications sent
           </div>
         </div>,
         { duration: 5000 }
       );
 
-      setRandomPickDialog({ open: false, slotId: null, slotName: '', entries: [] });
+      setRandomPickDialog({ open: false, slotId: null, slotName: '', entries: [], winnersCount: 1, availableSpots: 1 });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to pick winner');
+    }
+  };
+
+  const handleConfirmSelected = async () => {
+    if (!confirmSelectedDialog.slotId || confirmSelectedDialog.bookings.length === 0) return;
+    try {
+      const result = await confirmMultipleWinners.mutateAsync({
+        bookingIds: confirmSelectedDialog.bookings.map((b) => b.id),
+        slotId: confirmSelectedDialog.slotId,
+      });
+      toast.success(
+        <div className="flex items-center gap-2">
+          <Trophy className="h-4 w-4 text-amber-500" />
+          <span>{result.count} winner{result.count === 1 ? '' : 's'} confirmed!</span>
+        </div>
+      );
+      clearSelected(confirmSelectedDialog.slotId);
+      setConfirmSelectedDialog({ open: false, slotId: null, slotName: '', bookings: [] });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to confirm winners');
     }
   };
 
