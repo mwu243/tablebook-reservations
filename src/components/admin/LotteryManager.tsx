@@ -25,6 +25,7 @@ import { Label } from '@/components/ui/label';
 
 export function LotteryManager() {
   const { data: lotteryEntries, isLoading } = useOwnerLotteryBookings();
+  const { data: waitlistEntries } = useOwnerWaitlistEntries();
   const queryClient = useQueryClient();
   
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; booking: Booking | null }>({
