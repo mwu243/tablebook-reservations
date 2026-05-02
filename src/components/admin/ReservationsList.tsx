@@ -614,6 +614,37 @@ export function ReservationsList() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Remove Booking Confirmation */}
+      <AlertDialog
+        open={removeBookingDialog.open}
+        onOpenChange={(open) => !open && setRemoveBookingDialog({ open: false, bookingId: null, customerName: '' })}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove this reservation?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove <strong>{removeBookingDialog.customerName}</strong> from the event.
+              If a waitlist exists, the next person will be promoted automatically.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => removeBookingDialog.bookingId && removeBookingMutation.mutate(removeBookingDialog.bookingId)}
+              disabled={removeBookingMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {removeBookingMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="mr-2 h-4 w-4" />
+              )}
+              Remove Reservation
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
