@@ -40,11 +40,76 @@ export function LotteryManager() {
     slotId: string | null; 
     slotName: string;
     entries: Booking[];
+    winnersCount: number;
+    availableSpots: number;
   }>({
     open: false,
     slotId: null,
     slotName: '',
     entries: [],
+    winnersCount: 1,
+    availableSpots: 1,
+  });
+  const [selectedBySlot, setSelectedBySlot] = useState<Record<string, Set<string>>>({});
+  const [confirmSelectedDialog, setConfirmSelectedDialog] = useState<{
+    open: boolean;
+    slotId: string | null;
+    slotName: string;
+    bookings: Booking[];
+  }>({ open: false, slotId: null, slotName: '', bookings: [] });
+
+  const toggleSelected = (slotId: string, bookingId: string) => {
+    setSelectedBySlot((prev) => {
+      const next = new Set(prev[slotId] ?? []);
+      if (next.has(bookingId)) next.delete(bookingId);
+      else next.add(bookingId);
+      return { ...prev, [slotId]: next };
+    });
+  };
+
+  const clearSelected = (slotId: string) => {
+    setSelectedBySlot((prev) => ({ ...prev, [slotId]: new Set() }));
+  };
+
+  // Confirm multiple winners mutation
+  const confirmMultipleWinners = useMutation({
+    mutationFn: async ({ bookingIds, slotId }: { bookingIds: string[]; slotId: string }) => {
+      if (bookingIds.length === 0) throw new Error('No entries selected');
+
+      const { data: slot, error: slotError } = await supabase
+        .from('availability_slots')
+        .select('booked_tables, total_tables')
+        .eq('id', slotId)
+        .single();
+      if (slotError) throw slotError;
+      if (!slot) throw new Error('Slot not found');
+
+      const availableSpots = slot.total_tables - slot.booked_tables;
+      if (bookingIds.length > availableSpots) {
+        throw new Error(`Only ${availableSpots} spot(s) available`);
+      }
+
+      for (const bId of bookingIds) {
+        const { error } = await supabase
+          .from('bookings')
+          .update({ status: 'confirmed' })
+          .eq('id', bId);
+        if (error) throw error;
+      }
+
+      const { error: updateError } = await supabase
+        .rpc('increment_booked_tables', { slot_id: slotId, amount: bookingIds.length });
+      if (updateError) throw updateError;
+
+      return { count: bookingIds.length };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['owner-lottery-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['availability-slots'] });
+      queryClient.invalidateQueries({ queryKey: ['user-owned-slots'] });
+      queryClient.invalidateQueries({ queryKey: ['month-availability'] });
+    },
   });
 
   // Confirm winner mutation
