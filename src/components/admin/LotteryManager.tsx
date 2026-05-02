@@ -19,6 +19,9 @@ import { Booking } from '@/lib/types';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { parseLocalDate } from '@/lib/utils';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 export function LotteryManager() {
   const { data: lotteryEntries, isLoading } = useOwnerLotteryBookings();
