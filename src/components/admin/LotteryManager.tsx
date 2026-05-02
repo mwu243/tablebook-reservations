@@ -19,6 +19,9 @@ import { Booking } from '@/lib/types';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { parseLocalDate } from '@/lib/utils';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 export function LotteryManager() {
   const { data: lotteryEntries, isLoading } = useOwnerLotteryBookings();
@@ -37,11 +40,76 @@ export function LotteryManager() {
     slotId: string | null; 
     slotName: string;
     entries: Booking[];
+    winnersCount: number;
+    availableSpots: number;
   }>({
     open: false,
     slotId: null,
     slotName: '',
     entries: [],
+    winnersCount: 1,
+    availableSpots: 1,
+  });
+  const [selectedBySlot, setSelectedBySlot] = useState<Record<string, Set<string>>>({});
+  const [confirmSelectedDialog, setConfirmSelectedDialog] = useState<{
+    open: boolean;
+    slotId: string | null;
+    slotName: string;
+    bookings: Booking[];
+  }>({ open: false, slotId: null, slotName: '', bookings: [] });
+
+  const toggleSelected = (slotId: string, bookingId: string) => {
+    setSelectedBySlot((prev) => {
+      const next = new Set(prev[slotId] ?? []);
+      if (next.has(bookingId)) next.delete(bookingId);
+      else next.add(bookingId);
+      return { ...prev, [slotId]: next };
+    });
+  };
+
+  const clearSelected = (slotId: string) => {
+    setSelectedBySlot((prev) => ({ ...prev, [slotId]: new Set() }));
+  };
+
+  // Confirm multiple winners mutation
+  const confirmMultipleWinners = useMutation({
+    mutationFn: async ({ bookingIds, slotId }: { bookingIds: string[]; slotId: string }) => {
+      if (bookingIds.length === 0) throw new Error('No entries selected');
+
+      const { data: slot, error: slotError } = await supabase
+        .from('availability_slots')
+        .select('booked_tables, total_tables')
+        .eq('id', slotId)
+        .single();
+      if (slotError) throw slotError;
+      if (!slot) throw new Error('Slot not found');
+
+      const availableSpots = slot.total_tables - slot.booked_tables;
+      if (bookingIds.length > availableSpots) {
+        throw new Error(`Only ${availableSpots} spot(s) available`);
+      }
+
+      for (const bId of bookingIds) {
+        const { error } = await supabase
+          .from('bookings')
+          .update({ status: 'confirmed' })
+          .eq('id', bId);
+        if (error) throw error;
+      }
+
+      const { error: updateError } = await supabase
+        .rpc('increment_booked_tables', { slot_id: slotId, amount: bookingIds.length });
+      if (updateError) throw updateError;
+
+      return { count: bookingIds.length };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['owner-lottery-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['availability-slots'] });
+      queryClient.invalidateQueries({ queryKey: ['user-owned-slots'] });
+      queryClient.invalidateQueries({ queryKey: ['month-availability'] });
+    },
   });
 
   // Confirm winner mutation
@@ -218,32 +286,50 @@ export function LotteryManager() {
       const result = await pickRandomWinner.mutateAsync({
         slotId: randomPickDialog.slotId,
         entries: randomPickDialog.entries,
-        winnersCount: 1,
+        winnersCount: randomPickDialog.winnersCount,
         rejectOthers: true,
       });
 
-      const winner = result.winners[0];
-      
       toast.success(
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2 font-medium">
             <Trophy className="h-4 w-4 text-amber-500" />
-            Winner Selected!
+            {result.winnersCount} Winner{result.winnersCount === 1 ? '' : 's'} Selected!
           </div>
           <div className="text-sm">
-            {winner.customer_name} ({winner.customer_email})
+            {result.winners.map((w) => w.customer_name).join(', ')}
           </div>
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <Mail className="h-3 w-3" />
-            Notification sent to winner
+            Notifications sent
           </div>
         </div>,
         { duration: 5000 }
       );
 
-      setRandomPickDialog({ open: false, slotId: null, slotName: '', entries: [] });
+      setRandomPickDialog({ open: false, slotId: null, slotName: '', entries: [], winnersCount: 1, availableSpots: 1 });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to pick winner');
+    }
+  };
+
+  const handleConfirmSelected = async () => {
+    if (!confirmSelectedDialog.slotId || confirmSelectedDialog.bookings.length === 0) return;
+    try {
+      const result = await confirmMultipleWinners.mutateAsync({
+        bookingIds: confirmSelectedDialog.bookings.map((b) => b.id),
+        slotId: confirmSelectedDialog.slotId,
+      });
+      toast.success(
+        <div className="flex items-center gap-2">
+          <Trophy className="h-4 w-4 text-amber-500" />
+          <span>{result.count} winner{result.count === 1 ? '' : 's'} confirmed!</span>
+        </div>
+      );
+      clearSelected(confirmSelectedDialog.slotId);
+      setConfirmSelectedDialog({ open: false, slotId: null, slotName: '', bookings: [] });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to confirm winners');
     }
   };
 
@@ -294,9 +380,23 @@ export function LotteryManager() {
           </div>
         ) : (
           <div className="space-y-6">
-            {slotGroups.map(({ slot, entries }) => (
+            {slotGroups.map(({ slot, entries }) => {
+              const availableSpots = slot.total_tables - slot.booked_tables;
+              const selectedSet = selectedBySlot[slot.id] ?? new Set<string>();
+              const selectedCount = selectedSet.size;
+              const selectedBookings = entries.filter((e) => selectedSet.has(e.id));
+              const allSelected = entries.length > 0 && entries.every((e) => selectedSet.has(e.id));
+              const someSelected = selectedCount > 0 && !allSelected;
+              const toggleAll = () => {
+                setSelectedBySlot((prev) => ({
+                  ...prev,
+                  [slot.id]: allSelected ? new Set() : new Set(entries.map((e) => e.id)),
+                }));
+              };
+
+              return (
               <div key={slot.id} className="rounded-lg border border-border p-4">
-                <div className="mb-4 flex items-center justify-between">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <h3 className="font-medium">{slot.name}</h3>
                     <p className="text-sm text-muted-foreground">
@@ -304,41 +404,87 @@ export function LotteryManager() {
                       {slot.end_time && ` - ${formatTime(slot.end_time)}`}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="outline">
-                      {slot.total_tables - slot.booked_tables} spots left
+                      {availableSpots} spots left
                     </Badge>
                     <Button
                       size="sm"
                       variant="default"
                       className="bg-amber-600 hover:bg-amber-700"
-                      onClick={() => setRandomPickDialog({ 
-                        open: true, 
-                        slotId: slot.id, 
+                      onClick={() => setRandomPickDialog({
+                        open: true,
+                        slotId: slot.id,
                         slotName: slot.name,
-                        entries 
+                        entries,
+                        winnersCount: Math.min(1, availableSpots),
+                        availableSpots,
                       })}
-                      disabled={slot.booked_tables >= slot.total_tables || entries.length === 0}
+                      disabled={availableSpots <= 0 || entries.length === 0}
                     >
                       <Dices className="mr-1.5 h-4 w-4" />
-                      Pick Random Winner
+                      Pick Random Winner{availableSpots > 1 ? 's' : ''}
                     </Button>
                   </div>
                 </div>
 
+                {entries.length > 0 && (
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted/30 px-3 py-2">
+                    <label className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+                        onCheckedChange={toggleAll}
+                      />
+                      <span className="text-muted-foreground">
+                        {selectedCount > 0 ? `${selectedCount} selected` : 'Select all'}
+                      </span>
+                    </label>
+                    {selectedCount > 0 && (
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="ghost" onClick={() => clearSelected(slot.id)}>
+                          Clear
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => setConfirmSelectedDialog({
+                            open: true,
+                            slotId: slot.id,
+                            slotName: slot.name,
+                            bookings: selectedBookings,
+                          })}
+                          disabled={selectedCount > availableSpots}
+                        >
+                          <Check className="mr-1 h-4 w-4" />
+                          Confirm {selectedCount} Winner{selectedCount === 1 ? '' : 's'}
+                          {selectedCount > availableSpots && ` (only ${availableSpots} spots)`}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="space-y-2">
-                  {entries.map((entry) => (
+                  {entries.map((entry) => {
+                    const isSelected = selectedSet.has(entry.id);
+                    return (
                     <div
                       key={entry.id}
                       className="flex items-center justify-between rounded-md bg-muted/50 p-3 animate-fade-in"
                     >
-                      <div>
-                        <p className="font-medium">{entry.customer_name}</p>
-                        <p className="text-sm text-muted-foreground">{entry.customer_email}</p>
-                        <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <Users className="h-3 w-3" />
-                          {entry.party_size} {entry.party_size === 1 ? 'guest' : 'guests'}
-                        </p>
+                      <div className="flex items-center gap-3">
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => toggleSelected(slot.id, entry.id)}
+                          disabled={availableSpots <= 0}
+                        />
+                        <div>
+                          <p className="font-medium">{entry.customer_name}</p>
+                          <p className="text-sm text-muted-foreground">{entry.customer_email}</p>
+                          <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Users className="h-3 w-3" />
+                            {entry.party_size} {entry.party_size === 1 ? 'guest' : 'guests'}
+                          </p>
+                        </div>
                       </div>
                       <div className="flex gap-2">
                         <Button
@@ -352,17 +498,19 @@ export function LotteryManager() {
                         <Button
                           size="sm"
                           onClick={() => setConfirmDialog({ open: true, booking: entry })}
-                          disabled={slot.booked_tables >= slot.total_tables}
+                          disabled={availableSpots <= 0}
                         >
                           <Check className="mr-1 h-4 w-4" />
                           Select
                         </Button>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -419,25 +567,59 @@ export function LotteryManager() {
       </AlertDialog>
 
       {/* Pick Random Winner Dialog */}
-      <AlertDialog open={randomPickDialog.open} onOpenChange={(open) => !open && setRandomPickDialog({ open: false, slotId: null, slotName: '', entries: [] })}>
+      <AlertDialog
+        open={randomPickDialog.open}
+        onOpenChange={(open) =>
+          !open &&
+          setRandomPickDialog({
+            open: false,
+            slotId: null,
+            slotName: '',
+            entries: [],
+            winnersCount: 1,
+            availableSpots: 1,
+          })
+        }
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <Dices className="h-5 w-5 text-amber-600" />
-              Pick Random Winner
+              Pick Random Winner{randomPickDialog.winnersCount === 1 ? '' : 's'}
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-3">
                 <p>
-                  Randomly select a winner from <strong>{randomPickDialog.entries.length}</strong> entries for <strong>{randomPickDialog.slotName}</strong>.
+                  Randomly select winner(s) from <strong>{randomPickDialog.entries.length}</strong> entries for <strong>{randomPickDialog.slotName}</strong>.
                 </p>
+                <div className="space-y-1.5">
+                  <Label htmlFor="winners-count">Number of winners</Label>
+                  <Input
+                    id="winners-count"
+                    type="number"
+                    min={1}
+                    max={Math.min(randomPickDialog.entries.length, randomPickDialog.availableSpots)}
+                    value={randomPickDialog.winnersCount}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value || '1', 10);
+                      const max = Math.min(randomPickDialog.entries.length, randomPickDialog.availableSpots);
+                      setRandomPickDialog((prev) => ({
+                        ...prev,
+                        winnersCount: Math.max(1, Math.min(isNaN(v) ? 1 : v, max)),
+                      }));
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Up to {Math.min(randomPickDialog.entries.length, randomPickDialog.availableSpots)} can be picked ({randomPickDialog.availableSpots} spot(s) available).
+                  </p>
+                </div>
                 <div className="rounded-md bg-muted p-3 text-sm">
                   <p className="font-medium text-foreground">What happens:</p>
                   <ul className="mt-1 space-y-1 text-muted-foreground">
-                    <li>• One entry will be randomly selected as the winner</li>
-                    <li>• Winner's booking will be confirmed</li>
+                    <li>• {randomPickDialog.winnersCount} entr{randomPickDialog.winnersCount === 1 ? 'y' : 'ies'} will be randomly selected as winner{randomPickDialog.winnersCount === 1 ? '' : 's'}</li>
+                    <li>• Winning bookings will be confirmed</li>
                     <li>• All other entries will be rejected</li>
-                    <li>• Winner will be notified via email</li>
+                    <li>• Winners will be notified via email</li>
                   </ul>
                 </div>
               </div>
@@ -445,8 +627,8 @@ export function LotteryManager() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={handlePickRandomWinner} 
+            <AlertDialogAction
+              onClick={handlePickRandomWinner}
               disabled={pickRandomWinner.isPending}
               className="bg-amber-600 hover:bg-amber-700"
             >
@@ -455,7 +637,49 @@ export function LotteryManager() {
               ) : (
                 <Trophy className="mr-2 h-4 w-4" />
               )}
-              Pick Winner
+              Pick Winner{randomPickDialog.winnersCount === 1 ? '' : 's'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirm Selected Winners Dialog */}
+      <AlertDialog
+        open={confirmSelectedDialog.open}
+        onOpenChange={(open) =>
+          !open && setConfirmSelectedDialog({ open: false, slotId: null, slotName: '', bookings: [] })
+        }
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Selected Winners</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  Confirm <strong>{confirmSelectedDialog.bookings.length}</strong> winner(s) for <strong>{confirmSelectedDialog.slotName}</strong>?
+                </p>
+                <ul className="max-h-48 list-disc space-y-0.5 overflow-y-auto pl-5 text-sm text-muted-foreground">
+                  {confirmSelectedDialog.bookings.map((b) => (
+                    <li key={b.id}>
+                      {b.customer_name} ({b.customer_email})
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmSelected}
+              disabled={confirmMultipleWinners.isPending}
+            >
+              {confirmMultipleWinners.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Check className="mr-2 h-4 w-4" />
+              )}
+              Confirm Winners
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
