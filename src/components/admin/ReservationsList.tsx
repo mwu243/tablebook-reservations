@@ -119,6 +119,40 @@ export function ReservationsList() {
     slot: null,
   });
 
+  const [removeBookingDialog, setRemoveBookingDialog] = useState<{
+    open: boolean;
+    bookingId: string | null;
+    customerName: string;
+  }>({ open: false, bookingId: null, customerName: '' });
+
+  const queryClient = useQueryClient();
+
+  const removeBookingMutation = useMutation({
+    mutationFn: async (bookingId: string) => {
+      const { data, error } = await supabase.rpc('admin_remove_booking', {
+        p_booking_id: bookingId,
+      });
+      if (error) throw error;
+      return data as { success: boolean; promoted?: boolean; promoted_customer?: { name: string } };
+    },
+    onSuccess: (data) => {
+      if (data?.promoted && data.promoted_customer) {
+        toast.success(`Reservation removed. ${data.promoted_customer.name} promoted from waitlist.`);
+      } else {
+        toast.success('Reservation removed.');
+      }
+      queryClient.invalidateQueries({ queryKey: ['owner-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-all-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-waitlist'] });
+      queryClient.invalidateQueries({ queryKey: ['availability-slots'] });
+      queryClient.invalidateQueries({ queryKey: ['user-owned-slots'] });
+      setRemoveBookingDialog({ open: false, bookingId: null, customerName: '' });
+    },
+    onError: (err: unknown) => {
+      toast.error(err instanceof Error ? err.message : 'Failed to remove reservation');
+    },
+  });
+
   const formatTime = (time: string) => {
     const [hours, minutes] = time.split(':');
     const hour = parseInt(hours);
