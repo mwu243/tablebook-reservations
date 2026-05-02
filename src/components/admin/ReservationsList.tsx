@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
-import { CalendarCheck, CreditCard, Loader2, Users, History, Calendar, Clock, UtensilsCrossed, Pencil, Trash2, Settings, UserPlus } from 'lucide-react';
+import { CalendarCheck, CreditCard, Loader2, Users, History, Calendar, Clock, UtensilsCrossed, Pencil, Trash2, Settings, UserPlus, X } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 import { useOwnerAllBookings, useOwnerWaitlistEntries } from '@/hooks/useOwnerBookings';
 import { useUserOwnedSlots } from '@/hooks/useUserOwnedSlots';
 import { useDeleteAvailabilitySlot } from '@/hooks/useAvailabilitySlots';
@@ -115,6 +117,40 @@ export function ReservationsList() {
   }>({
     open: false,
     slot: null,
+  });
+
+  const [removeBookingDialog, setRemoveBookingDialog] = useState<{
+    open: boolean;
+    bookingId: string | null;
+    customerName: string;
+  }>({ open: false, bookingId: null, customerName: '' });
+
+  const queryClient = useQueryClient();
+
+  const removeBookingMutation = useMutation({
+    mutationFn: async (bookingId: string) => {
+      const { data, error } = await supabase.rpc('admin_remove_booking', {
+        p_booking_id: bookingId,
+      });
+      if (error) throw error;
+      return data as { success: boolean; promoted?: boolean; promoted_customer?: { name: string } };
+    },
+    onSuccess: (data) => {
+      if (data?.promoted && data.promoted_customer) {
+        toast.success(`Reservation removed. ${data.promoted_customer.name} promoted from waitlist.`);
+      } else {
+        toast.success('Reservation removed.');
+      }
+      queryClient.invalidateQueries({ queryKey: ['owner-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-all-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-waitlist'] });
+      queryClient.invalidateQueries({ queryKey: ['availability-slots'] });
+      queryClient.invalidateQueries({ queryKey: ['user-owned-slots'] });
+      setRemoveBookingDialog({ open: false, bookingId: null, customerName: '' });
+    },
+    onError: (err: unknown) => {
+      toast.error(err instanceof Error ? err.message : 'Failed to remove reservation');
+    },
   });
 
   const formatTime = (time: string) => {
@@ -253,10 +289,25 @@ export function ReservationsList() {
           </p>
         )}
       </div>
-      <p className="flex items-center gap-1 text-sm text-muted-foreground">
-        <Users className="h-3.5 w-3.5" />
-        {booking.party_size} {booking.party_size === 1 ? 'guest' : 'guests'}
-      </p>
+      <div className="flex items-center gap-2">
+        <p className="flex items-center gap-1 text-sm text-muted-foreground">
+          <Users className="h-3.5 w-3.5" />
+          {booking.party_size} {booking.party_size === 1 ? 'guest' : 'guests'}
+        </p>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
+          onClick={() => setRemoveBookingDialog({
+            open: true,
+            bookingId: booking.id,
+            customerName: booking.customer_name,
+          })}
+          title="Remove this reservation"
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
     </div>
   );
 
@@ -559,6 +610,37 @@ export function ReservationsList() {
                 <Trash2 className="mr-2 h-4 w-4" />
               )}
               Yes, Delete Everything
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Remove Booking Confirmation */}
+      <AlertDialog
+        open={removeBookingDialog.open}
+        onOpenChange={(open) => !open && setRemoveBookingDialog({ open: false, bookingId: null, customerName: '' })}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove this reservation?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove <strong>{removeBookingDialog.customerName}</strong> from the event.
+              If a waitlist exists, the next person will be promoted automatically.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => removeBookingDialog.bookingId && removeBookingMutation.mutate(removeBookingDialog.bookingId)}
+              disabled={removeBookingMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {removeBookingMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="mr-2 h-4 w-4" />
+              )}
+              Remove Reservation
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

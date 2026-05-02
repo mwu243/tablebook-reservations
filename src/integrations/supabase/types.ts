@@ -245,6 +245,7 @@ export type Database = {
         }
         Returns: Json
       }
+      admin_remove_booking: { Args: { p_booking_id: string }; Returns: Json }
       admin_update_booking_status: {
         Args: { booking_id: string; new_status: string }
         Returns: undefined
