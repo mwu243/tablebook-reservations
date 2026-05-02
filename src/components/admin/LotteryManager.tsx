@@ -516,6 +516,73 @@ export function LotteryManager() {
         )}
       </div>
 
+      {/* Waitlist for lottery events */}
+      {(() => {
+        const lotteryWaitlist = (waitlistEntries || []).filter(
+          (w: any) => w.availability_slots?.booking_mode === 'lottery'
+        );
+        if (lotteryWaitlist.length === 0) return null;
+
+        const grouped = lotteryWaitlist.reduce((acc: Record<string, { slot: any; entries: any[] }>, entry: any) => {
+          const key = entry.slot_id;
+          if (!acc[key]) acc[key] = { slot: entry.availability_slots, entries: [] };
+          acc[key].entries.push(entry);
+          return acc;
+        }, {});
+
+        return (
+          <div className="admin-card mt-6">
+            <div className="mb-6 flex items-center gap-2">
+              <Clock className="h-5 w-5 text-primary" />
+              <h2 className="text-xl font-semibold">Waitlists for Lottery Events</h2>
+              <Badge variant="secondary" className="ml-2">
+                {lotteryWaitlist.length} waiting
+              </Badge>
+            </div>
+            <div className="space-y-6">
+              {Object.values(grouped).map(({ slot, entries }) => (
+                <div key={slot.id} className="rounded-lg border border-border p-4">
+                  <div className="mb-4">
+                    <h3 className="font-medium">{slot.name}</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {format(parseLocalDate(slot.date), 'EEEE, MMM d')} at {formatTime(slot.time)}
+                      {slot.end_time && ` - ${formatTime(slot.end_time)}`}
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    {entries
+                      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+                      .map((entry) => (
+                        <div
+                          key={entry.id}
+                          className="flex items-center justify-between rounded-md bg-muted/50 p-3"
+                        >
+                          <div className="flex items-center gap-3">
+                            <Badge variant="outline" className="shrink-0">
+                              #{entry.position}
+                            </Badge>
+                            <div>
+                              <p className="font-medium">{entry.customer_name}</p>
+                              <p className="text-sm text-muted-foreground">{entry.customer_email}</p>
+                              {entry.customer_phone && (
+                                <p className="text-xs text-muted-foreground">{entry.customer_phone}</p>
+                              )}
+                              <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <Users className="h-3 w-3" />
+                                {entry.party_size} {entry.party_size === 1 ? 'guest' : 'guests'}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Confirm Single Winner Dialog */}
       <AlertDialog open={confirmDialog.open} onOpenChange={(open) => !open && setConfirmDialog({ open: false, booking: null })}>
         <AlertDialogContent>
