@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
-import { CalendarCheck, CreditCard, Loader2, Users, History, Calendar, Clock, UtensilsCrossed, Pencil, Trash2, Settings, UserPlus } from 'lucide-react';
+import { CalendarCheck, CreditCard, Loader2, Users, History, Calendar, Clock, UtensilsCrossed, Pencil, Trash2, Settings, UserPlus, X } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 import { useOwnerAllBookings, useOwnerWaitlistEntries } from '@/hooks/useOwnerBookings';
 import { useUserOwnedSlots } from '@/hooks/useUserOwnedSlots';
 import { useDeleteAvailabilitySlot } from '@/hooks/useAvailabilitySlots';
