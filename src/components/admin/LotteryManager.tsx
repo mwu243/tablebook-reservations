@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { format } from 'date-fns';
-import { Check, Dices, Loader2, Mail, Ticket, Trophy, Users, X } from 'lucide-react';
+import { Check, Clock, Dices, Loader2, Mail, Ticket, Trophy, Users, X } from 'lucide-react';
 import { useOwnerLotteryBookings, useOwnerWaitlistEntries } from '@/hooks/useOwnerBookings';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
