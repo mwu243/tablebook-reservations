@@ -289,10 +289,25 @@ export function ReservationsList() {
           </p>
         )}
       </div>
-      <p className="flex items-center gap-1 text-sm text-muted-foreground">
-        <Users className="h-3.5 w-3.5" />
-        {booking.party_size} {booking.party_size === 1 ? 'guest' : 'guests'}
-      </p>
+      <div className="flex items-center gap-2">
+        <p className="flex items-center gap-1 text-sm text-muted-foreground">
+          <Users className="h-3.5 w-3.5" />
+          {booking.party_size} {booking.party_size === 1 ? 'guest' : 'guests'}
+        </p>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
+          onClick={() => setRemoveBookingDialog({
+            open: true,
+            bookingId: booking.id,
+            customerName: booking.customer_name,
+          })}
+          title="Remove this reservation"
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
     </div>
   );
 
