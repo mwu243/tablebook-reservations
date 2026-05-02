@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { format, parseISO } from 'date-fns';
-import { CalendarCheck, CreditCard, Loader2, Users, History, Calendar, Clock, UtensilsCrossed, Pencil, Trash2, Settings } from 'lucide-react';
+import { CalendarCheck, CreditCard, Loader2, Users, History, Calendar, Clock, UtensilsCrossed, Pencil, Trash2, Settings, UserPlus } from 'lucide-react';
 import { useOwnerAllBookings, useOwnerWaitlistEntries } from '@/hooks/useOwnerBookings';
 import { useUserOwnedSlots } from '@/hooks/useUserOwnedSlots';
 import { useDeleteAvailabilitySlot } from '@/hooks/useAvailabilitySlots';
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { ParticipantPaymentModal } from './ParticipantPaymentModal';
+import { AddGuestModal } from './AddGuestModal';
 import { EditSlotModal } from './EditSlotModal';
 import { WebhookSettings } from './WebhookSettings';
 import { SendWebhookButton } from './SendWebhookButton';
@@ -93,6 +94,12 @@ export function ReservationsList() {
   });
 
   const [webhookSettingsOpen, setWebhookSettingsOpen] = useState(false);
+
+  const [addGuestModal, setAddGuestModal] = useState<{
+    open: boolean;
+    slotId: string | null;
+    slotName: string;
+  }>({ open: false, slotId: null, slotName: '' });
 
   const [editDialog, setEditDialog] = useState<{
     open: boolean;
@@ -348,6 +355,22 @@ export function ReservationsList() {
               <CreditCard className="mr-2 h-4 w-4" />
               Payment Info
             </Button>
+            {!isPast && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAddGuestModal({
+                  open: true,
+                  slotId: group.slotId,
+                  slotName: group.slotName,
+                })}
+                disabled={group.bookedTables >= group.totalTables}
+                title={group.bookedTables >= group.totalTables ? 'Event is full' : 'Add a guest manually'}
+              >
+                <UserPlus className="mr-2 h-4 w-4" />
+                Add Guest
+              </Button>
+            )}
             {!isPast && group.slot && (
               <>
                 <Button
@@ -473,6 +496,13 @@ export function ReservationsList() {
         onOpenChange={(open) => !open && setPaymentModal({ open: false, slotId: null, slotName: '' })}
         slotId={paymentModal.slotId}
         slotName={paymentModal.slotName}
+      />
+
+      <AddGuestModal
+        open={addGuestModal.open}
+        onOpenChange={(open) => !open && setAddGuestModal({ open: false, slotId: null, slotName: '' })}
+        slotId={addGuestModal.slotId}
+        slotName={addGuestModal.slotName}
       />
 
       <WebhookSettings
