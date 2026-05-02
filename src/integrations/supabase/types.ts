@@ -235,6 +235,16 @@ export type Database = {
       }
     }
     Functions: {
+      admin_add_booking: {
+        Args: {
+          p_customer_email: string
+          p_customer_name: string
+          p_dietary_restrictions?: string
+          p_party_size: number
+          p_slot_id: string
+        }
+        Returns: Json
+      }
       admin_update_booking_status: {
         Args: { booking_id: string; new_status: string }
         Returns: undefined
