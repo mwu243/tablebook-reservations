@@ -567,25 +567,59 @@ export function LotteryManager() {
       </AlertDialog>
 
       {/* Pick Random Winner Dialog */}
-      <AlertDialog open={randomPickDialog.open} onOpenChange={(open) => !open && setRandomPickDialog({ open: false, slotId: null, slotName: '', entries: [] })}>
+      <AlertDialog
+        open={randomPickDialog.open}
+        onOpenChange={(open) =>
+          !open &&
+          setRandomPickDialog({
+            open: false,
+            slotId: null,
+            slotName: '',
+            entries: [],
+            winnersCount: 1,
+            availableSpots: 1,
+          })
+        }
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <Dices className="h-5 w-5 text-amber-600" />
-              Pick Random Winner
+              Pick Random Winner{randomPickDialog.winnersCount === 1 ? '' : 's'}
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-3">
                 <p>
-                  Randomly select a winner from <strong>{randomPickDialog.entries.length}</strong> entries for <strong>{randomPickDialog.slotName}</strong>.
+                  Randomly select winner(s) from <strong>{randomPickDialog.entries.length}</strong> entries for <strong>{randomPickDialog.slotName}</strong>.
                 </p>
+                <div className="space-y-1.5">
+                  <Label htmlFor="winners-count">Number of winners</Label>
+                  <Input
+                    id="winners-count"
+                    type="number"
+                    min={1}
+                    max={Math.min(randomPickDialog.entries.length, randomPickDialog.availableSpots)}
+                    value={randomPickDialog.winnersCount}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value || '1', 10);
+                      const max = Math.min(randomPickDialog.entries.length, randomPickDialog.availableSpots);
+                      setRandomPickDialog((prev) => ({
+                        ...prev,
+                        winnersCount: Math.max(1, Math.min(isNaN(v) ? 1 : v, max)),
+                      }));
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Up to {Math.min(randomPickDialog.entries.length, randomPickDialog.availableSpots)} can be picked ({randomPickDialog.availableSpots} spot(s) available).
+                  </p>
+                </div>
                 <div className="rounded-md bg-muted p-3 text-sm">
                   <p className="font-medium text-foreground">What happens:</p>
                   <ul className="mt-1 space-y-1 text-muted-foreground">
-                    <li>• One entry will be randomly selected as the winner</li>
-                    <li>• Winner's booking will be confirmed</li>
+                    <li>• {randomPickDialog.winnersCount} entr{randomPickDialog.winnersCount === 1 ? 'y' : 'ies'} will be randomly selected as winner{randomPickDialog.winnersCount === 1 ? '' : 's'}</li>
+                    <li>• Winning bookings will be confirmed</li>
                     <li>• All other entries will be rejected</li>
-                    <li>• Winner will be notified via email</li>
+                    <li>• Winners will be notified via email</li>
                   </ul>
                 </div>
               </div>
@@ -593,8 +627,8 @@ export function LotteryManager() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={handlePickRandomWinner} 
+            <AlertDialogAction
+              onClick={handlePickRandomWinner}
               disabled={pickRandomWinner.isPending}
               className="bg-amber-600 hover:bg-amber-700"
             >
@@ -603,7 +637,49 @@ export function LotteryManager() {
               ) : (
                 <Trophy className="mr-2 h-4 w-4" />
               )}
-              Pick Winner
+              Pick Winner{randomPickDialog.winnersCount === 1 ? '' : 's'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirm Selected Winners Dialog */}
+      <AlertDialog
+        open={confirmSelectedDialog.open}
+        onOpenChange={(open) =>
+          !open && setConfirmSelectedDialog({ open: false, slotId: null, slotName: '', bookings: [] })
+        }
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Selected Winners</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  Confirm <strong>{confirmSelectedDialog.bookings.length}</strong> winner(s) for <strong>{confirmSelectedDialog.slotName}</strong>?
+                </p>
+                <ul className="max-h-48 list-disc space-y-0.5 overflow-y-auto pl-5 text-sm text-muted-foreground">
+                  {confirmSelectedDialog.bookings.map((b) => (
+                    <li key={b.id}>
+                      {b.customer_name} ({b.customer_email})
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmSelected}
+              disabled={confirmMultipleWinners.isPending}
+            >
+              {confirmMultipleWinners.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Check className="mr-2 h-4 w-4" />
+              )}
+              Confirm Winners
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
