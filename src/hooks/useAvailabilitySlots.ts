@@ -135,7 +135,7 @@ export function useBookSlot() {
           customerName,
           customerEmail,
           partySize,
-          bookingType: 'booking',
+          bookingType: isLottery ? 'lottery_entry' : 'booking',
         },
       }).then(({ error }) => {
         if (error) {
