@@ -15,7 +15,15 @@ const BookingNotificationSchema = z.object({
   customerName: z.string().min(1).max(200).optional(),
   customerEmail: z.string().email().max(255).optional(),
   partySize: z.number().int().positive().max(100).optional(),
-  bookingType: z.enum(["booking", "waitlist", "promotion", "event_update"]),
+  bookingType: z.enum([
+    "booking",
+    "waitlist",
+    "promotion",
+    "event_update",
+    "lottery_entry",
+    "lottery_won",
+    "lottery_lost",
+  ]),
   bookingId: z.string().uuid().optional(),
 }).refine((data) => {
   // customerName, customerEmail, partySize are required for non-event_update types
