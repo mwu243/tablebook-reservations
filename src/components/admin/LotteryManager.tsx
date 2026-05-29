@@ -309,18 +309,6 @@ export function LotteryManager() {
     }
   };
 
-  const handleRejectEntry = async () => {
-    if (!rejectDialog.booking) return;
-    
-    try {
-      await rejectEntry.mutateAsync({ bookingId: rejectDialog.booking.id });
-      toast.success(`Entry for ${rejectDialog.booking.customer_name} has been rejected`);
-      setRejectDialog({ open: false, booking: null });
-    } catch (error) {
-      toast.error('Failed to reject entry');
-    }
-  };
-
   const handlePickRandomWinner = async () => {
     if (!randomPickDialog.slotId || randomPickDialog.entries.length === 0) return;
 
@@ -331,6 +319,11 @@ export function LotteryManager() {
         winnersCount: randomPickDialog.winnersCount,
         rejectOthers: true,
       });
+
+      notifyLotteryOutcome(result.winners, 'lottery_won');
+      if (result.rejected.length > 0) {
+        notifyLotteryOutcome(result.rejected, 'lottery_lost');
+      }
 
       toast.success(
         <div className="flex flex-col gap-1">
