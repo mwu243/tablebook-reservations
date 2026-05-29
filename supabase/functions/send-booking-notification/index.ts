@@ -500,10 +500,12 @@ const handler = async (req: Request): Promise<Response> => {
       console.log("send-booking-notification: Customer email sent successfully");
     }
 
-    // Send host notification email (skip for promotions since the host already knows)
-    if (hostEmail && !isPromotion) {
+    // Send host notification email (skip when host already knows / not relevant)
+    if (hostEmail && !skipHostEmail) {
       const hostSubject = isWaitlist
         ? `New Waitlist Entry - ${slot.name}`
+        : isLotteryEntry
+        ? `New Lottery Entry - ${slot.name}`
         : `New Reservation - ${slot.name}`;
 
       const hostEmailHtml = `
