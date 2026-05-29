@@ -281,7 +281,9 @@ export function LotteryManager() {
         bookingId: confirmDialog.booking.id,
         slotId: confirmDialog.booking.slot_id,
       });
-      
+
+      notifyLotteryOutcome([confirmDialog.booking], 'lottery_won');
+
       toast.success(
         <div className="flex items-center gap-2">
           <Mail className="h-4 w-4" />
@@ -291,6 +293,19 @@ export function LotteryManager() {
       setConfirmDialog({ open: false, booking: null });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to confirm winner');
+    }
+  };
+
+  const handleRejectEntry = async () => {
+    if (!rejectDialog.booking) return;
+    
+    try {
+      await rejectEntry.mutateAsync({ bookingId: rejectDialog.booking.id });
+      notifyLotteryOutcome([rejectDialog.booking], 'lottery_lost');
+      toast.success(`Entry for ${rejectDialog.booking.customer_name} has been rejected`);
+      setRejectDialog({ open: false, booking: null });
+    } catch (error) {
+      toast.error('Failed to reject entry');
     }
   };
 
