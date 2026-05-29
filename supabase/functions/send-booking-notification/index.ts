@@ -15,7 +15,15 @@ const BookingNotificationSchema = z.object({
   customerName: z.string().min(1).max(200).optional(),
   customerEmail: z.string().email().max(255).optional(),
   partySize: z.number().int().positive().max(100).optional(),
-  bookingType: z.enum(["booking", "waitlist", "promotion", "event_update"]),
+  bookingType: z.enum([
+    "booking",
+    "waitlist",
+    "promotion",
+    "event_update",
+    "lottery_entry",
+    "lottery_won",
+    "lottery_lost",
+  ]),
   bookingId: z.string().uuid().optional(),
 }).refine((data) => {
   // customerName, customerEmail, partySize are required for non-event_update types
@@ -350,11 +358,18 @@ const handler = async (req: Request): Promise<Response> => {
 
     const isWaitlist = bookingType === "waitlist";
     const isPromotion = bookingType === "promotion";
+    const isLotteryEntry = bookingType === "lottery_entry";
+    const isLotteryWon = bookingType === "lottery_won";
+    const isLotteryLost = bookingType === "lottery_lost";
+    // Treat these as "no ICS" types (no confirmed spot yet, or none at all)
+    const skipIcs = isWaitlist || isLotteryEntry || isLotteryLost;
+    // Skip host notification for these types (host already knows / not relevant)
+    const skipHostEmail = isPromotion || isLotteryWon || isLotteryLost;
 
-    // Generate ICS for confirmed bookings and promotions
+    // Generate ICS for confirmed bookings, promotions, and lottery winners
     let icsAttachment: { filename: string; content: string }[] = [];
     
-    if (!isWaitlist) {
+    if (!skipIcs) {
       const eventId = bookingId || `${slotId}-${Date.now()}`;
       const icsContent = generateICSContent(slot, eventId, partySize!);
       const safeFilename = slot.name.replace(/[^a-zA-Z0-9\s-]/g, "").replace(/\s+/g, "-");
@@ -368,7 +383,19 @@ const handler = async (req: Request): Promise<Response> => {
     let customerHeading: string;
     let customerMessage: string;
 
-    if (isPromotion) {
+    if (isLotteryWon) {
+      customerSubject = `You Won the Lottery! Reservation Confirmed - ${slot.name}`;
+      customerHeading = "You Won the Lottery!";
+      customerMessage = "Great news! You were selected from the lottery and your reservation is now confirmed. Here are the details:";
+    } else if (isLotteryLost) {
+      customerSubject = `Lottery Results - ${slot.name}`;
+      customerHeading = "Lottery Results";
+      customerMessage = "Thank you for entering the lottery for this event. Unfortunately, you were not selected this time. We hope to see you at a future event!";
+    } else if (isLotteryEntry) {
+      customerSubject = `Lottery Entry Received - ${slot.name}`;
+      customerHeading = "You're Entered in the Lottery!";
+      customerMessage = "Your lottery entry has been received. The host will draw winners and notify you once results are in. Good luck!";
+    } else if (isPromotion) {
       customerSubject = `Good News! You've Got a Spot - ${slot.name}`;
       customerHeading = "You've Been Upgraded!";
       customerMessage = "Great news! A spot has opened up and you've been moved from the waitlist to a confirmed reservation. Here are your details:";
@@ -428,17 +455,17 @@ const handler = async (req: Request): Promise<Response> => {
                 </div>
               </div>
               
-              ${!isWaitlist ? `
+              ${icsAttachment.length > 0 ? `
               <div class="calendar-note">
                 <p style="margin: 0;"><strong>📅 Calendar Invite Attached</strong></p>
-                <p style="margin: 5px 0 0 0; font-size: 14px;">Open the attached .ics file to add this event to your calendar.</p>
+                <p style="margin: 5px 0 0 0; font-size: 14px;">Open the attached .ics file to add this event to your Gmail, Outlook, or Apple calendar.</p>
               </div>
               ` : ""}
               
-              <p>We look forward to seeing you!</p>
+              ${isLotteryLost ? "" : "<p>We look forward to seeing you!</p>"}
               
               <div class="footer">
-                <p>If you need to cancel or modify your reservation, please contact the host.</p>
+                <p>${isLotteryLost ? "Keep an eye out for future events." : "If you need to cancel or modify your reservation, please contact the host."}</p>
               </div>
             </div>
           </div>
@@ -473,10 +500,12 @@ const handler = async (req: Request): Promise<Response> => {
       console.log("send-booking-notification: Customer email sent successfully");
     }
 
-    // Send host notification email (skip for promotions since the host already knows)
-    if (hostEmail && !isPromotion) {
+    // Send host notification email (skip when host already knows / not relevant)
+    if (hostEmail && !skipHostEmail) {
       const hostSubject = isWaitlist
         ? `New Waitlist Entry - ${slot.name}`
+        : isLotteryEntry
+        ? `New Lottery Entry - ${slot.name}`
         : `New Reservation - ${slot.name}`;
 
       const hostEmailHtml = `
@@ -499,11 +528,11 @@ const handler = async (req: Request): Promise<Response> => {
           <body>
             <div class="container">
               <div class="header">
-                <h1 style="margin: 0;">${isWaitlist ? "New Waitlist Entry" : "New Reservation"}</h1>
+                <h1 style="margin: 0;">${isWaitlist ? "New Waitlist Entry" : isLotteryEntry ? "New Lottery Entry" : "New Reservation"}</h1>
               </div>
               <div class="content">
                 <p>Hi,</p>
-                <p>You have a new ${isWaitlist ? "waitlist entry" : "reservation"} for your event!</p>
+                <p>You have a new ${isWaitlist ? "waitlist entry" : isLotteryEntry ? "lottery entry" : "reservation"} for your event!</p>
                 
                 <div class="details">
                   <div class="detail-row">

@@ -72,6 +72,32 @@ export function LotteryManager() {
     setSelectedBySlot((prev) => ({ ...prev, [slotId]: new Set() }));
   };
 
+  // Fire-and-forget notification helper. Sends one email per booking with the
+  // given type ("lottery_won" → confirmation + .ics; "lottery_lost" → sorry email).
+  const notifyLotteryOutcome = (
+    bookings: Booking[],
+    bookingType: 'lottery_won' | 'lottery_lost',
+  ) => {
+    for (const b of bookings) {
+      supabase.functions
+        .invoke('send-booking-notification', {
+          body: {
+            slotId: b.slot_id,
+            bookingId: b.id,
+            customerName: b.customer_name,
+            customerEmail: b.customer_email,
+            partySize: b.party_size,
+            bookingType,
+          },
+        })
+        .then(({ error }) => {
+          if (error) {
+            console.error(`Failed to send ${bookingType} notification:`, error);
+          }
+        });
+    }
+  };
+
   // Confirm multiple winners mutation
   const confirmMultipleWinners = useMutation({
     mutationFn: async ({ bookingIds, slotId }: { bookingIds: string[]; slotId: string }) => {
@@ -255,7 +281,9 @@ export function LotteryManager() {
         bookingId: confirmDialog.booking.id,
         slotId: confirmDialog.booking.slot_id,
       });
-      
+
+      notifyLotteryOutcome([confirmDialog.booking], 'lottery_won');
+
       toast.success(
         <div className="flex items-center gap-2">
           <Mail className="h-4 w-4" />
@@ -273,6 +301,7 @@ export function LotteryManager() {
     
     try {
       await rejectEntry.mutateAsync({ bookingId: rejectDialog.booking.id });
+      notifyLotteryOutcome([rejectDialog.booking], 'lottery_lost');
       toast.success(`Entry for ${rejectDialog.booking.customer_name} has been rejected`);
       setRejectDialog({ open: false, booking: null });
     } catch (error) {
@@ -290,6 +319,11 @@ export function LotteryManager() {
         winnersCount: randomPickDialog.winnersCount,
         rejectOthers: true,
       });
+
+      notifyLotteryOutcome(result.winners, 'lottery_won');
+      if (result.rejected.length > 0) {
+        notifyLotteryOutcome(result.rejected, 'lottery_lost');
+      }
 
       toast.success(
         <div className="flex flex-col gap-1">
@@ -321,6 +355,7 @@ export function LotteryManager() {
         bookingIds: confirmSelectedDialog.bookings.map((b) => b.id),
         slotId: confirmSelectedDialog.slotId,
       });
+      notifyLotteryOutcome(confirmSelectedDialog.bookings, 'lottery_won');
       toast.success(
         <div className="flex items-center gap-2">
           <Trophy className="h-4 w-4 text-amber-500" />
