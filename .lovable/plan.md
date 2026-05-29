@@ -1,65 +1,49 @@
+## Goal
 
+Make sure every user finds out the outcome of their reservation request via email — with a calendar invite (.ics file, which opens in Gmail/Outlook/Apple Calendar) whenever they get a confirmed spot, and a clear "sorry" email when they don't.
 
-# Fix: Date Display Timezone Bug Across Entire Application
+## What already works (no change)
 
-## Root Cause
+- **FCFS booking confirmed** → confirmation email + `.ics` calendar invite sent ✅
+- **Waitlist join** → confirmation email sent (no invite, since they don't have a spot) ✅
+- **Promoted from waitlist** (someone cancels → next person promoted) → confirmation email + `.ics` calendar invite sent ✅
+- **Event details edited** → updated email + refreshed `.ics` to all confirmed guests ✅
 
-Every component that displays a slot date uses `new Date("2026-02-25")`, which JavaScript interprets as **UTC midnight**. In US timezones (CST, EST, PST, etc.), this shifts the date **one day back** when displayed with `format()` (which uses local time).
+## Gaps to fix
 
-This means:
-- The database stores "2026-02-25"
-- The UI displays "Feb 24" (wrong)
-- The edit modal (already fixed) shows "Feb 25" (correct)
-- The user sees a mismatch and cannot effectively change dates
+1. **Lottery winner selected** by admin → currently no email is sent. Should receive "You won! Reservation confirmed" email with `.ics` calendar invite.
+2. **Lottery loser** (admin picked winners and rejected the rest) → currently no email is sent. Should receive a polite "Unfortunately, you weren't selected" email (no calendar invite).
+3. **Lottery entry submitted** by customer → currently sends a "Reservation Confirmed" email with `.ics` immediately, which is misleading because they haven't won yet. Should instead send a "Lottery entry received, we'll let you know" email (no invite).
 
-## Solution
+## Implementation
 
-Create a shared utility function for timezone-safe date parsing, then replace all `new Date(slot.date)` calls across the codebase.
+### 1. Extend the existing `send-booking-notification` edge function
 
-### Step 1: Add utility function to `src/lib/utils.ts`
+Add two new `bookingType` values to the Zod schema:
+- `lottery_entry` — entry received, awaiting drawing (no ICS)
+- `lottery_won` — winner selected (same template as `promotion`, with ICS)
+- `lottery_lost` — not selected (no ICS, friendly copy)
 
-Add a `parseLocalDate(dateStr: string): Date` function that splits "YYYY-MM-DD" and constructs a local-midnight Date object:
-```typescript
-export function parseLocalDate(dateStr: string): Date {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  return new Date(year, month - 1, day);
-}
-```
+Reuse the existing email layout/styling. The ICS generator and Resend wiring already exist — just route the new types through them with the right subject/heading/copy.
 
-### Step 2: Update all affected files
+### 2. Wire up the lottery flow (`src/components/admin/LotteryManager.tsx` + `src/hooks/useLotteryBookings.ts` / `useAdminBookings.ts`)
 
-Replace every `new Date(slot.date)` / `new Date(event.date)` / `new Date(booking.availability_slots.date)` with `parseLocalDate(...)`:
+In the existing `confirmMultipleWinners` and `pickRandomWinner` mutations:
+- After winners' status is updated to `confirmed` and `booked_tables` is incremented, loop through winners and invoke `send-booking-notification` with `bookingType: 'lottery_won'` for each.
+- If `rejectOthers` is true, loop through the rejected losers and invoke `send-booking-notification` with `bookingType: 'lottery_lost'` for each.
 
-**Files to update (6 files, ~14 occurrences total):**
+All invocations are fire-and-forget (errors logged, not surfaced) — consistent with how booking emails are sent today.
 
-1. **`src/components/admin/SlotsManager.tsx`** (2 occurrences)
-   - Line 113: slot date display in list
-   - Line 174: slot date in delete dialog
+### 3. Fix the misleading email on lottery entry (`src/hooks/useAvailabilitySlots.ts`)
 
-2. **`src/components/admin/ReservationsList.tsx`** (2 occurrences)
-   - Line 322: group date display
-   - Line 503: slot date in delete dialog
+In `useBookSlot`, when `isLottery === true`, switch the notification call from `bookingType: 'booking'` to `bookingType: 'lottery_entry'` so the user gets a correct "entry received" message instead of a premature "reservation confirmed" email + invite.
 
-3. **`src/components/admin/LotteryManager.tsx`** (1 occurrence)
-   - Line 302: slot date display
+## Files to touch
 
-4. **`src/components/customer/EventCard.tsx`** (1 occurrence)
-   - Line 91: event date display in discovery bar
+- `supabase/functions/send-booking-notification/index.ts` — add 3 new booking types with copy + correct ICS handling.
+- `src/hooks/useAvailabilitySlots.ts` — fix lottery-entry email type.
+- `src/components/admin/LotteryManager.tsx` (or the underlying lottery mutations in `src/hooks/useLotteryBookings.ts` / `useAdminBookings.ts` — will pick whichever is the single source of truth) — invoke notifications for winners and losers.
 
-5. **`src/components/customer/MyReservations.tsx`** (3 occurrences)
-   - Line 166: confirmed booking date
-   - Line 245: waitlist entry date
-   - Line 299: lottery entry date
+## Calendar compatibility note
 
-6. **`src/components/customer/BookingModal.tsx`** (2 occurrences)
-   - Line 298: slot date in booking confirmation
-   - Line 381: slot date in waitlist confirmation
-
-Each file will import `parseLocalDate` from `@/lib/utils` and replace `new Date(dateString)` with `parseLocalDate(dateString)`.
-
-## Expected Outcome
-
-- All dates display correctly regardless of user timezone
-- The edit modal and list view show the same date (no mismatch)
-- Date changes via the edit modal will work correctly since the user sees the true date and can change it to a genuinely different value
-
+The `.ics` (iCalendar) attachment already produced is the industry-standard format that Gmail, Outlook (Outlook.com + desktop), Apple Calendar, and Google Calendar all recognize natively — users just open the attachment and click "Add to calendar". No separate Outlook/Gmail integration is needed for end users to add events to their calendars.
