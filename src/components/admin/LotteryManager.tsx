@@ -72,6 +72,32 @@ export function LotteryManager() {
     setSelectedBySlot((prev) => ({ ...prev, [slotId]: new Set() }));
   };
 
+  // Fire-and-forget notification helper. Sends one email per booking with the
+  // given type ("lottery_won" → confirmation + .ics; "lottery_lost" → sorry email).
+  const notifyLotteryOutcome = (
+    bookings: Booking[],
+    bookingType: 'lottery_won' | 'lottery_lost',
+  ) => {
+    for (const b of bookings) {
+      supabase.functions
+        .invoke('send-booking-notification', {
+          body: {
+            slotId: b.slot_id,
+            bookingId: b.id,
+            customerName: b.customer_name,
+            customerEmail: b.customer_email,
+            partySize: b.party_size,
+            bookingType,
+          },
+        })
+        .then(({ error }) => {
+          if (error) {
+            console.error(`Failed to send ${bookingType} notification:`, error);
+          }
+        });
+    }
+  };
+
   // Confirm multiple winners mutation
   const confirmMultipleWinners = useMutation({
     mutationFn: async ({ bookingIds, slotId }: { bookingIds: string[]; slotId: string }) => {
