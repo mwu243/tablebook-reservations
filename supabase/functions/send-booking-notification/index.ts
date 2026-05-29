@@ -528,11 +528,11 @@ const handler = async (req: Request): Promise<Response> => {
           <body>
             <div class="container">
               <div class="header">
-                <h1 style="margin: 0;">${isWaitlist ? "New Waitlist Entry" : "New Reservation"}</h1>
+                <h1 style="margin: 0;">${isWaitlist ? "New Waitlist Entry" : isLotteryEntry ? "New Lottery Entry" : "New Reservation"}</h1>
               </div>
               <div class="content">
                 <p>Hi,</p>
-                <p>You have a new ${isWaitlist ? "waitlist entry" : "reservation"} for your event!</p>
+                <p>You have a new ${isWaitlist ? "waitlist entry" : isLotteryEntry ? "lottery entry" : "reservation"} for your event!</p>
                 
                 <div class="details">
                   <div class="detail-row">
