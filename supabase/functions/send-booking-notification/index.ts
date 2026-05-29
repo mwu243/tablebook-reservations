@@ -455,17 +455,17 @@ const handler = async (req: Request): Promise<Response> => {
                 </div>
               </div>
               
-              ${!isWaitlist ? `
+              ${icsAttachment.length > 0 ? `
               <div class="calendar-note">
                 <p style="margin: 0;"><strong>📅 Calendar Invite Attached</strong></p>
-                <p style="margin: 5px 0 0 0; font-size: 14px;">Open the attached .ics file to add this event to your calendar.</p>
+                <p style="margin: 5px 0 0 0; font-size: 14px;">Open the attached .ics file to add this event to your Gmail, Outlook, or Apple calendar.</p>
               </div>
               ` : ""}
               
-              <p>We look forward to seeing you!</p>
+              ${isLotteryLost ? "" : "<p>We look forward to seeing you!</p>"}
               
               <div class="footer">
-                <p>If you need to cancel or modify your reservation, please contact the host.</p>
+                <p>${isLotteryLost ? "Keep an eye out for future events." : "If you need to cancel or modify your reservation, please contact the host."}</p>
               </div>
             </div>
           </div>
