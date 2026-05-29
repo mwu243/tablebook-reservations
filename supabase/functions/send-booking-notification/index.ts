@@ -358,11 +358,18 @@ const handler = async (req: Request): Promise<Response> => {
 
     const isWaitlist = bookingType === "waitlist";
     const isPromotion = bookingType === "promotion";
+    const isLotteryEntry = bookingType === "lottery_entry";
+    const isLotteryWon = bookingType === "lottery_won";
+    const isLotteryLost = bookingType === "lottery_lost";
+    // Treat these as "no ICS" types (no confirmed spot yet, or none at all)
+    const skipIcs = isWaitlist || isLotteryEntry || isLotteryLost;
+    // Skip host notification for these types (host already knows / not relevant)
+    const skipHostEmail = isPromotion || isLotteryWon || isLotteryLost;
 
-    // Generate ICS for confirmed bookings and promotions
+    // Generate ICS for confirmed bookings, promotions, and lottery winners
     let icsAttachment: { filename: string; content: string }[] = [];
     
-    if (!isWaitlist) {
+    if (!skipIcs) {
       const eventId = bookingId || `${slotId}-${Date.now()}`;
       const icsContent = generateICSContent(slot, eventId, partySize!);
       const safeFilename = slot.name.replace(/[^a-zA-Z0-9\s-]/g, "").replace(/\s+/g, "-");
@@ -376,7 +383,19 @@ const handler = async (req: Request): Promise<Response> => {
     let customerHeading: string;
     let customerMessage: string;
 
-    if (isPromotion) {
+    if (isLotteryWon) {
+      customerSubject = `You Won the Lottery! Reservation Confirmed - ${slot.name}`;
+      customerHeading = "You Won the Lottery!";
+      customerMessage = "Great news! You were selected from the lottery and your reservation is now confirmed. Here are the details:";
+    } else if (isLotteryLost) {
+      customerSubject = `Lottery Results - ${slot.name}`;
+      customerHeading = "Lottery Results";
+      customerMessage = "Thank you for entering the lottery for this event. Unfortunately, you were not selected this time. We hope to see you at a future event!";
+    } else if (isLotteryEntry) {
+      customerSubject = `Lottery Entry Received - ${slot.name}`;
+      customerHeading = "You're Entered in the Lottery!";
+      customerMessage = "Your lottery entry has been received. The host will draw winners and notify you once results are in. Good luck!";
+    } else if (isPromotion) {
       customerSubject = `Good News! You've Got a Spot - ${slot.name}`;
       customerHeading = "You've Been Upgraded!";
       customerMessage = "Great news! A spot has opened up and you've been moved from the waitlist to a confirmed reservation. Here are your details:";
